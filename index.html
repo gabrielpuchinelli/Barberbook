@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BarberBook</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/responsividade.css">
+</head>
+<body>
+<header>
+    <div class="logo">
+    <img src="img/logo.png">
+    <h1>Barber<span>Book</span></h1>
+    </div>
+
+    <button class="btn-admin" id="btn-admin">
+        Área do Administrador
+    </button>
+
+</header>   
+<main id="area-cliente">
+<section id="servicos">
+
+    <div class="titulo-servicos">
+        <h2>Escolha seu serviço</h2>
+        <p>Selecione o serviço desejado e encontre o horário perfeito para você.</p>
+    </div>
+
+    <div class="cards-servicos">
+
+        <button class="card-servico">
+            <h3>✂️ Corte de Cabelo</h3>
+            <p>R$ 30,00</p>
+        </button>
+
+        <button class="card-servico">
+            <h3>🧔 Barba</h3>
+            <p>R$ 20,00</p>
+        </button>
+
+        <button class="card-servico">
+            <h3>💈 Combo <br>(cabelo e barba)</h3>
+            <p>R$ 45,00</p>
+        </button>
+
+        <button class="card-servico">
+            <h3>👁️ Sobrancelha</h3>
+            <p>R$ 10,00</p>
+        </button>
+
+        <button class="card-servico">
+            <h3>🎨 Pigmentação</h3>
+            <p>R$ 25,00</p>
+        </button>
+
+        <button class="card-servico">
+            <h3>🧴 Hidratação</h3>
+            <p>R$ 35,00</p>
+        </button>
+
+    </div>
+
+</section>
+<section id="agendamento" style="display: none;">
+    <h2>Escolha o dia</h2>
+
+    <div class="campo-data">
+        <label for="data">Data do agendamento</label>
+        <input type="date" id="data">
+    </div>
+
+    <div id="area-horarios" style="display: none;">
+        <h2>Escolha o horário</h2>
+    <div class="area-horarios">
+        <div class="horarios">      
+        <button class="card-horario">09:00</button>
+        <button class="card-horario">09:30</button>
+        <button class="card-horario">10:00</button>
+        <button class="card-horario">10:30</button>
+        <button class="card-horario">11:00</button>
+        <button class="card-horario">11:30</button>
+        <button class="card-horario">13:00</button>
+        <button class="card-horario">13:30</button>
+        <button class="card-horario">14:00</button>
+        <button class="card-horario">14:30</button>
+        <button class="card-horario">15:00</button>
+        <button class="card-horario">15:30</button>
+        <button class="card-horario">16:00</button>
+        <button class="card-horario">16:30</button>
+        <button class="card-horario">17:00</button>
+        <button class="card-horario">17:30</button>
+        <button class="card-horario">18:00</button>
+        <button class="card-horario">18:30</button>
+        <button class="card-horario">19:00</button>
+        <button class="card-horario">19:30</button>
+        <button class="card-horario">20:00</button>
+        <button class="card-horario">20:30</button>
+        <button class="card-horario">21:00</button>
+        <button class="card-horario">21:30</button>
+        <button class="card-horario">22:00</button>
+        </div>
+    </div>
+</section>
+
+<section id="dados-cliente" style="display: none;">
+    <h2>Confirme seus dados</h2>
+
+    <form id="form-agendamento">
+        <div class="campo">
+            <label for="nome">Nome</label>
+            <input type="text" id="nome" placeholder="Digite seu nome" required>
+        </div>
+
+        <div class="campo">
+            <label for="whatsapp">WhatsApp</label>
+            <input type="tel" id="whatsapp" placeholder="(21) 99999-9999" required>
+        </div>
+
+        <button type="submit" class="btn-confirmar">
+            Confirmar agendamento
+        </button>
+    </form>
+</section>
+</main>
+
+<section id="area-login" style="display: none;">
+    <form id="form-login" class="login-box">
+        <h2>Login do Administrador</h2>
+
+        <label for="usuario">Usuário</label>
+        <input type="text" id="usuario" required>
+
+        <label for="senha">Senha</label>
+        <input type="password" id="senha" required>
+
+        <button type="submit">Entrar</button>
+
+        <p id="erro-login"></p>
+    </form>
+</section>
+
+<section id="area-admin" style="display: none;">
+    <h2>Agendamentos</h2>
+
+    <div id="lista-agendamentos"></div>
+
+    <button id="btn-voltar">Voltar</button>
+</section>
+
+<footer>
+    <div class="footer-conteudo">
+        <h3>Barbearia do Gabriel</h3>
+
+        <p>✂️ Cortes modernos, barba e estilo para você.</p>
+
+        <p>📍 Rua Exemplo, 1 - Rio de Janeiro</p>
+
+        <p>📱 WhatsApp: (21) 99999-9999</p>
+
+        <p>🕒 Seg a Sáb: 09h às 19h</p>
+
+        <p>&copy; 2026 Barbearia do Gabriel. Todos os direitos reservados.</p>
+    </div>
+</footer>
+<script src="js/script.js"></script>
+</body>
+</html>

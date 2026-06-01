@@ -1,0 +1,372 @@
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    background: #121212;
+    color: white;
+}
+
+main {
+    flex: 1;
+}
+
+/*cabecalho*/
+header {
+    height: 80px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 0px 40px;
+
+    background: #1c1c1c;
+    border-bottom: 2px solid #d4af37;
+}
+
+.logo h1 {
+    margin: -50px;
+    color: white;
+    font-size: 2rem;
+}
+
+.logo span {
+    color: #d4af37;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.logo img {
+    width: 150px;
+    height: 150px;
+    object-fit: contain;
+}
+
+.btn-admin {
+    background: #d4af37;
+    color: #121212;
+
+    border: none;
+    border-radius: 8px;
+
+    padding: 12px 20px;
+
+    font-weight: bold;
+    cursor: pointer;
+
+    transition: 0.3s;
+}
+
+.btn-admin:hover {
+    background: #f0c94d;
+    transform: translateY(-2px);
+}
+
+/* servicos */
+
+.titulo-servicos {
+    text-align: center;
+    margin: 40px 0;
+}
+
+.titulo-servicos h2 {
+    color: #d4af37;
+    font-size: 2rem;
+    margin-bottom: 10px;
+}
+
+.titulo-servicos p {
+    color: #bdbdbd;
+    font-size: 1rem;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.servicos {
+    display: block;
+    margin-top: 40px;
+}
+.cards-servicos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+}
+
+.card-servico {
+    background: #1f1f1f;
+    border: 2px solid #333;
+    border-radius: 10px;
+    width: 180px;
+    padding: 15px;
+    text-align: center;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.card-servico:hover {
+    transform: translateY(-5px);
+    border-color: #d4af37;
+}
+
+.card-servico h3 {
+    margin-bottom: 10px;
+    color: #d4af37;
+}
+
+.card-servico p {
+    color: #ccc;
+}
+
+.card-servico.selecionado {
+    border-color: #d4af37;
+    background: #2c2c2c;
+}
+
+/* Área de agendamento */
+
+.campo-data {
+    max-width: 350px;
+    margin: 20px auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.campo-data label {
+    color: #d4af37;
+    font-weight: bold;
+}
+
+.campo-data input {
+    padding: 14px;
+    border-radius: 10px;
+    border: 2px solid #333;
+    background: #1f1f1f;
+    color: #fff;
+    font-size: 1rem;
+}
+
+.campo-data input:focus {
+    outline: none;
+    border-color: #d4af37;
+}
+
+.horarios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+}
+
+.card-horario {
+    padding: 14px 20px;
+    border-radius: 10px;
+    border: 2px solid #333;
+    background: #1f1f1f;
+    color: #fff;
+    cursor: pointer;
+}
+
+.card-horario:hover,
+.card-horario.selecionado {
+    background: #d4af37;
+    color: #121212;
+    border-color: #d4af37;
+}  
+
+#area-horarios {
+    max-width: 900px;
+    margin: 40px auto;
+}
+
+#area-horarios h2 {
+    margin-bottom: 20px;
+    color: #fff;
+}
+
+.caixa-horarios {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.35);
+
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 14px;
+}
+
+.card-horario {
+    padding: 14px 10px;
+    border-radius: 10px;
+    border: 2px solid #333;
+    background: #242424;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.card-horario:hover {
+    border-color: #d4af37;
+    transform: translateY(-3px);
+}
+
+.card-horario.selecionado {
+    background: #d4af37;
+    color: #121212;
+    border-color: #d4af37;
+}
+
+/* Dados do cliente */
+#dados-cliente {
+    max-width: 450px;
+    margin: 40px auto;
+    padding: 30px;
+    background: #1c1c1c;
+    border-radius: 15px;
+    border: 1px solid #333;
+}
+
+#dados-cliente h2 {
+    text-align: center;
+    color: #d4af37;
+    margin-bottom: 25px;
+}
+
+.campo {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 18px;
+}
+
+.campo label {
+    color: #d4af37;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.campo input {
+    padding: 13px;
+    border-radius: 10px;
+    border: 2px solid #333;
+    background: #2b2b2b;
+    color: white;
+    font-size: 1rem;
+}
+
+.btn-confirmar {
+    width: 100%;
+    padding: 14px;
+    background: #d4af37;
+    color: #121212;
+    border: none;
+    border-radius: 10px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* Área do administrador */
+#area-login,
+#area-admin {
+    max-width: 500px;
+    margin: 50px auto;
+}
+
+.login-box {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-left: 4px solid #d4af37;
+    border-radius: 14px;
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.login-box h2,
+#area-admin h2 {
+    color: #d4af37;
+    text-align: center;
+}
+
+.login-box input {
+    padding: 12px;
+    border-radius: 8px;
+    border: 2px solid #333;
+    background: #242424;
+    color: white;
+}
+
+.login-box button,
+#btn-voltar {
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: #d4af37;
+    color: #121212;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#erro-login {
+    color: #ff6b6b;
+    text-align: center;
+}
+
+.card-admin {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-left: 4px solid #d4af37;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 15px;
+}
+
+/* botao de exclusao*/
+.btn-excluir {
+    margin-top: 15px;
+    padding: 10px 15px;
+
+    background: #dc3545;
+    color: white;
+
+    border: none;
+    border-radius: 8px;
+
+    cursor: pointer;
+    font-weight: bold;
+
+    transition: 0.3s;
+}
+
+.btn-excluir:hover {
+    background: #bb2d3b;
+}
+
+/* Rodapé */
+footer {
+    margin-top: 50px;
+    background: #1c1c1c;
+    border-top: 2px solid #d4af37;
+    padding: 30px 20px;
+    text-align: center;
+}
+
+.footer-conteudo h3 {
+    color: #d4af37;
+    margin-bottom: 15px;
+}
+
+.footer-conteudo p {
+    margin: 8px 0;
+    color: #ccc;
+}
