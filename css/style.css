@@ -1,79 +1,95 @@
-html, body {
-    height: 100%;
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    min-height: 100%;
     margin: 0;
 }
 
 body {
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
     background: #121212;
     color: white;
+    font-family: Arial, Helvetica, sans-serif;
 }
 
-main {
-    flex: 1;
+main,
+#area-login,
+#area-admin {
+    flex: 1 0 auto;
 }
 
-/*cabecalho*/
+button,
+input {
+    font: inherit;
+}
+
+button {
+    transition: 0.2s ease;
+}
+
 header {
-    height: 80px;
+    min-height: 80px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-
-    padding: 0px 40px;
-
+    padding: 0 40px;
     background: #1c1c1c;
     border-bottom: 2px solid #d4af37;
 }
 
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.logo img {
+    width: 115px;
+    height: 115px;
+    object-fit: contain;
+}
+
 .logo h1 {
-    margin: -50px;
+    margin: 0;
     color: white;
-    font-size: 2rem;
+    font-size: 2.2rem;
+    line-height: 1;
 }
 
 .logo span {
     color: #d4af37;
 }
 
-.logo {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.logo img {
-    width: 150px;
-    height: 150px;
-    object-fit: contain;
-}
-
-.btn-admin {
+.btn-admin,
+.btn-confirmar,
+.login-box button,
+.form-horario button {
     background: #d4af37;
     color: #121212;
-
     border: none;
     border-radius: 8px;
-
     padding: 12px 20px;
-
     font-weight: bold;
     cursor: pointer;
-
-    transition: 0.3s;
 }
 
-.btn-admin:hover {
+.btn-admin:hover,
+.btn-confirmar:hover,
+.login-box button:hover,
+.form-horario button:hover {
     background: #f0c94d;
     transform: translateY(-2px);
 }
 
-/* servicos */
-
 .titulo-servicos {
     text-align: center;
     margin: 40px 0;
+    padding: 0 20px;
 }
 
 .titulo-servicos h2 {
@@ -89,26 +105,24 @@ header {
     margin: 0 auto;
 }
 
-.servicos {
-    display: block;
-    margin-top: 40px;
-}
 .cards-servicos {
     display: flex;
     flex-wrap: wrap;
     gap: 15px;
     justify-content: center;
+    padding: 0 20px;
 }
 
 .card-servico {
     background: #1f1f1f;
     border: 2px solid #333;
-    border-radius: 10px;
+    border-radius: 8px;
     width: 180px;
+    min-height: 150px;
     padding: 15px;
     text-align: center;
     cursor: pointer;
-    transition: 0.3s;
+    color: white;
 }
 
 .card-servico:hover {
@@ -117,7 +131,7 @@ header {
 }
 
 .card-servico h3 {
-    margin-bottom: 10px;
+    margin: 0 0 10px;
     color: #d4af37;
 }
 
@@ -130,57 +144,109 @@ header {
     background: #2c2c2c;
 }
 
-/* Área de agendamento */
-
-.campo-data {
-    max-width: 350px;
-    margin: 20px auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+#agendamento {
+    max-width: 980px;
+    margin: 40px auto;
+    padding: 0 20px;
+    text-align: center;
 }
 
-.campo-data label {
+.dias-cliente {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin: 22px auto 10px;
+}
+
+.card-dia {
+    width: 132px;
+    min-height: 82px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 2px solid #333;
+    background: #242424;
+    color: white;
+    cursor: pointer;
+}
+
+.card-dia strong {
+    color: #d4af37;
+}
+
+.card-dia span {
+    color: #cfcfcf;
+    font-size: 0.92rem;
+}
+
+.card-dia:hover {
+    border-color: #d4af37;
+    transform: translateY(-3px);
+}
+
+.card-dia.selecionado {
+    background: #d4af37;
+    border-color: #d4af37;
+    color: #121212;
+}
+
+.card-dia.selecionado strong,
+.card-dia.selecionado span {
+    color: #121212;
+}
+
+.card-dia.indisponivel {
+    background: #2b2b2b;
+    color: #8f8f8f;
+    border-color: #444;
+    cursor: not-allowed;
+}
+
+.card-dia.indisponivel strong,
+.card-dia.indisponivel span {
+    color: #8f8f8f;
+}
+
+.card-dia.indisponivel:hover {
+    transform: none;
+    border-color: #444;
+}
+
+.campo label {
     color: #d4af37;
     font-weight: bold;
 }
 
-.campo-data input {
-    padding: 14px;
-    border-radius: 10px;
+.campo input,
+.login-box input,
+.form-horario input,
+.filtros-admin input {
+    padding: 13px;
+    border-radius: 8px;
     border: 2px solid #333;
-    background: #1f1f1f;
-    color: #fff;
+    background: #242424;
+    color: white;
     font-size: 1rem;
 }
 
-.campo-data input:focus {
+.campo input:focus,
+.login-box input:focus,
+.form-horario input:focus,
+.filtros-admin input:focus {
     outline: none;
     border-color: #d4af37;
 }
 
-.horarios {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    justify-content: center;
+.aviso-data {
+    display: block;
+    min-height: 18px;
+    color: #ffcf5c;
+    text-align: center;
 }
-
-.card-horario {
-    padding: 14px 20px;
-    border-radius: 10px;
-    border: 2px solid #333;
-    background: #1f1f1f;
-    color: #fff;
-    cursor: pointer;
-}
-
-.card-horario:hover,
-.card-horario.selecionado {
-    background: #d4af37;
-    color: #121212;
-    border-color: #d4af37;
-}  
 
 #area-horarios {
     max-width: 900px;
@@ -192,27 +258,22 @@ header {
     color: #fff;
 }
 
-.caixa-horarios {
-    background: #1c1c1c;
-    border: 1px solid #333;
-    border-radius: 16px;
-    padding: 30px;
-    box-shadow: 0 0 20px rgba(0,0,0,0.35);
-
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-    gap: 14px;
+.horarios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
 }
 
 .card-horario {
+    min-width: 82px;
     padding: 14px 10px;
-    border-radius: 10px;
+    border-radius: 8px;
     border: 2px solid #333;
     background: #242424;
     color: white;
     font-weight: bold;
     cursor: pointer;
-    transition: 0.3s;
 }
 
 .card-horario:hover {
@@ -226,13 +287,25 @@ header {
     border-color: #d4af37;
 }
 
-/* Dados do cliente */
+.card-horario.indisponivel {
+    background: #2b2b2b;
+    color: #8f8f8f;
+    border-color: #444;
+    cursor: not-allowed;
+    text-decoration: line-through;
+}
+
+.card-horario.indisponivel:hover {
+    transform: none;
+    border-color: #444;
+}
+
 #dados-cliente {
     max-width: 450px;
     margin: 40px auto;
     padding: 30px;
     background: #1c1c1c;
-    border-radius: 15px;
+    border-radius: 8px;
     border: 1px solid #333;
 }
 
@@ -246,115 +319,275 @@ header {
     display: flex;
     flex-direction: column;
     margin-bottom: 18px;
-}
-
-.campo label {
-    color: #d4af37;
-    margin-bottom: 8px;
-    font-weight: bold;
-}
-
-.campo input {
-    padding: 13px;
-    border-radius: 10px;
-    border: 2px solid #333;
-    background: #2b2b2b;
-    color: white;
-    font-size: 1rem;
+    gap: 8px;
 }
 
 .btn-confirmar {
     width: 100%;
-    padding: 14px;
-    background: #d4af37;
-    color: #121212;
-    border: none;
-    border-radius: 10px;
-    font-weight: bold;
-    cursor: pointer;
 }
 
-/* Área do administrador */
 #area-login,
 #area-admin {
-    max-width: 500px;
+    width: min(1120px, calc(100% - 40px));
     margin: 50px auto;
 }
 
 .login-box {
+    max-width: 430px;
+    margin: 0 auto;
     background: #1c1c1c;
     border: 1px solid #333;
     border-left: 4px solid #d4af37;
-    border-radius: 14px;
+    border-radius: 8px;
     padding: 30px;
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
 
-.login-box h2,
-#area-admin h2 {
+.login-box h2 {
     color: #d4af37;
     text-align: center;
-}
-
-.login-box input {
-    padding: 12px;
-    border-radius: 8px;
-    border: 2px solid #333;
-    background: #242424;
-    color: white;
-}
-
-.login-box button,
-#btn-voltar {
-    padding: 12px;
-    border: none;
-    border-radius: 8px;
-    background: #d4af37;
-    color: #121212;
-    font-weight: bold;
-    cursor: pointer;
 }
 
 #erro-login {
     color: #ff6b6b;
     text-align: center;
+    min-height: 20px;
 }
 
-.card-admin {
+.admin-topo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 22px;
+}
+
+.admin-topo h2 {
+    color: #d4af37;
+    margin: 8px 0;
+    font-size: 2rem;
+}
+
+.admin-topo p,
+.admin-card-cabecalho p {
+    margin: 0;
+    color: #bdbdbd;
+}
+
+.admin-etiqueta {
+    color: #7dd3fc;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 0.78rem;
+}
+
+.admin-resumo {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.resumo-card,
+.admin-card {
     background: #1c1c1c;
     border: 1px solid #333;
-    border-left: 4px solid #d4af37;
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 15px;
+    border-radius: 8px;
 }
 
-/* botao de exclusao*/
-.btn-excluir {
-    margin-top: 15px;
-    padding: 10px 15px;
+.resumo-card {
+    padding: 18px;
+    border-left: 4px solid #d4af37;
+}
 
-    background: #dc3545;
+.resumo-card:nth-child(2) {
+    border-left-color: #22c55e;
+}
+
+.resumo-card:nth-child(3) {
+    border-left-color: #7dd3fc;
+}
+
+.resumo-card span {
+    display: block;
+    color: #bdbdbd;
+    margin-bottom: 8px;
+}
+
+.resumo-card strong {
+    font-size: 2rem;
+}
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.admin-card {
+    padding: 20px;
+}
+
+.admin-card-cabecalho {
+    margin-bottom: 18px;
+}
+
+.admin-card-cabecalho.linha {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+}
+
+.admin-card h3 {
+    margin: 0 0 6px;
     color: white;
+}
 
+.dias-admin {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.dias-admin label,
+.horario-admin-item label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #eee;
+}
+
+.dias-admin input,
+.horario-admin-item input {
+    width: 18px;
+    height: 18px;
+    accent-color: #d4af37;
+}
+
+.form-horario {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.lista-horarios-admin {
+    display: grid;
+    gap: 10px;
+    max-height: 260px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.horario-admin-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: #242424;
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+.admin-card-lista {
+    margin-bottom: 18px;
+}
+
+.filtros-admin {
+    display: grid;
+    grid-template-columns: 1fr 190px;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.tabela-admin-wrapper {
+    overflow-x: auto;
+}
+
+.tabela-admin {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 780px;
+}
+
+.tabela-admin th,
+.tabela-admin td {
+    border-bottom: 1px solid #333;
+    padding: 12px;
+    text-align: left;
+}
+
+.tabela-admin th {
+    color: #121212;
+    background: #d4af37;
+}
+
+.tabela-admin tr:hover td {
+    background: #202020;
+}
+
+.acoes-tabela {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-editar,
+.btn-secundario,
+.btn-excluir {
     border: none;
     border-radius: 8px;
-
+    padding: 10px 14px;
     cursor: pointer;
     font-weight: bold;
-
-    transition: 0.3s;
 }
 
+.btn-editar {
+    background: #7dd3fc;
+    color: #101820;
+}
+
+.btn-secundario {
+    background: #2f2f2f;
+    color: white;
+    border: 1px solid #444;
+}
+
+.btn-excluir {
+    background: #dc3545;
+    color: white;
+}
+
+.btn-editar:hover,
+.btn-secundario:hover,
 .btn-excluir:hover {
-    background: #bb2d3b;
+    filter: brightness(1.1);
+    transform: translateY(-1px);
 }
 
-/* Rodapé */
+.pequeno {
+    padding: 8px 10px;
+    font-size: 0.9rem;
+}
+
+.mensagem-vazia {
+    color: #bdbdbd;
+    text-align: center;
+}
+
+.form-editar-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+}
+
 footer {
-    margin-top: 50px;
+    margin-top: auto;
     background: #1c1c1c;
     border-top: 2px solid #d4af37;
     padding: 30px 20px;
