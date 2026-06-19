@@ -447,6 +447,81 @@ header {
     color: white;
 }
 
+.faturamento-card {
+    margin-bottom: 18px;
+}
+
+.input-mes-faturamento {
+    min-width: 180px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 2px solid #333;
+    background: #242424;
+    color: white;
+}
+
+.input-mes-faturamento:focus {
+    outline: none;
+    border-color: #d4af37;
+}
+
+.faturamento-resumo {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.faturamento-item {
+    padding: 16px;
+    background: #242424;
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+.faturamento-item.destaque {
+    border-left: 4px solid #22c55e;
+}
+
+.faturamento-item span {
+    display: block;
+    color: #bdbdbd;
+    margin-bottom: 8px;
+}
+
+.faturamento-item strong {
+    font-size: 1.5rem;
+}
+
+.faturamento-servicos {
+    display: grid;
+    gap: 10px;
+}
+
+.faturamento-servico-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: #202020;
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+.faturamento-servico-item span {
+    color: #f5f5f5;
+    font-weight: bold;
+}
+
+.faturamento-servico-item strong {
+    color: #22c55e;
+}
+
+.faturamento-servico-item small {
+    color: #bdbdbd;
+}
+
 .dias-admin {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -475,6 +550,37 @@ header {
     margin-bottom: 14px;
 }
 
+.form-data-bloqueada {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.form-data-bloqueada input {
+    padding: 13px;
+    border-radius: 8px;
+    border: 2px solid #333;
+    background: #242424;
+    color: white;
+    font-size: 1rem;
+}
+
+.form-data-bloqueada input:focus {
+    outline: none;
+    border-color: #d4af37;
+}
+
+.form-data-bloqueada button {
+    background: #d4af37;
+    color: #121212;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
 .lista-horarios-admin {
     display: grid;
     gap: 10px;
@@ -483,7 +589,14 @@ header {
     padding-right: 4px;
 }
 
-.horario-admin-item {
+.lista-proximos-atendimentos,
+.lista-datas-bloqueadas {
+    display: grid;
+    gap: 10px;
+}
+
+.horario-admin-item,
+.data-bloqueada-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -492,6 +605,44 @@ header {
     background: #242424;
     border: 1px solid #333;
     border-radius: 8px;
+}
+
+.data-bloqueada-item span {
+    color: #f5f5f5;
+    font-weight: bold;
+}
+
+.proximo-atendimento-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px;
+    background: #242424;
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+.proximo-atendimento-item strong,
+.proximo-atendimento-item span,
+.proximo-atendimento-item small {
+    display: block;
+}
+
+.proximo-atendimento-item strong {
+    color: #d4af37;
+    margin-bottom: 4px;
+}
+
+.proximo-atendimento-item span,
+.proximo-atendimento-item small {
+    color: #cfcfcf;
+}
+
+.acoes-cabecalho {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .admin-card-lista {
@@ -512,7 +663,7 @@ header {
 .tabela-admin {
     width: 100%;
     border-collapse: collapse;
-    min-width: 780px;
+    min-width: 860px;
 }
 
 .tabela-admin th,

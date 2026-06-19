@@ -7,9 +7,24 @@
 
     .admin-resumo,
     .admin-grid,
+    .faturamento-resumo,
     .filtros-admin,
     .form-editar-grid {
         grid-template-columns: 1fr;
+    }
+
+    .faturamento-servico-item {
+        grid-template-columns: 1fr;
+        align-items: flex-start;
+    }
+
+    .acoes-cabecalho {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .acoes-cabecalho button {
+        flex: 1;
     }
 }
 
@@ -102,13 +117,20 @@
         grid-template-columns: 1fr;
     }
 
-    .form-horario {
+    .form-horario,
+    .form-data-bloqueada {
         grid-template-columns: 1fr;
     }
 
     .btn-secundario,
-    .form-horario button {
+    .form-horario button,
+    .form-data-bloqueada button,
+    .input-mes-faturamento {
         width: 100%;
+    }
+
+    .proximo-atendimento-item {
+        flex-direction: column;
     }
 
     .acoes-tabela {

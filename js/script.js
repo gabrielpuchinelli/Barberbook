@@ -19,15 +19,25 @@ const btnVoltar = document.getElementById("btn-voltar");
 const totalAgendamentos = document.getElementById("total-agendamentos");
 const agendamentosHoje = document.getElementById("agendamentos-hoje");
 const proximoHorario = document.getElementById("proximo-horario");
+const filtroMesFaturamento = document.getElementById("filtro-mes-faturamento");
+const faturamentoMes = document.getElementById("faturamento-mes");
+const atendimentosMes = document.getElementById("atendimentos-mes");
+const ticketMedio = document.getElementById("ticket-medio");
+const faturamentoServicos = document.getElementById("faturamento-servicos");
 const checkboxesDia = document.querySelectorAll(".checkbox-dia");
 const formHorario = document.getElementById("form-horario");
 const novoHorario = document.getElementById("novo-horario");
 const listaHorariosAdmin = document.getElementById("lista-horarios-admin");
+const listaProximosAtendimentos = document.getElementById("lista-proximos-atendimentos");
+const formDataBloqueada = document.getElementById("form-data-bloqueada");
+const novaDataBloqueada = document.getElementById("nova-data-bloqueada");
+const listaDatasBloqueadas = document.getElementById("lista-datas-bloqueadas");
 const tabelaAgendamentos = document.getElementById("tabela-agendamentos");
 const mensagemAgendamentos = document.getElementById("mensagem-agendamentos");
 const buscaAgendamento = document.getElementById("busca-agendamento");
 const filtroData = document.getElementById("filtro-data");
 const btnLimparFiltros = document.getElementById("btn-limpar-filtros");
+const btnExportarCsv = document.getElementById("btn-exportar-csv");
 
 const formEditar = document.getElementById("form-editar");
 const editarIndex = document.getElementById("editar-index");
@@ -68,6 +78,7 @@ const NOMES_DIAS = {
 let agendamentosCache = [];
 let diasDisponiveisCache = { ...DIAS_PADRAO };
 let horariosDisponiveisCache = HORARIOS_PADRAO.map(horario => ({ horario, ativo: true }));
+let datasBloqueadasCache = [];
 
 function lerJSON(chave, fallback) {
     const dados = localStorage.getItem(chave);
@@ -112,6 +123,15 @@ function salvarHorariosDisponiveis(horarios) {
     salvarJSON("horariosDisponiveis", horarios);
 }
 
+function obterDatasBloqueadas() {
+    return datasBloqueadasCache;
+}
+
+function salvarDatasBloqueadas(datas) {
+    datasBloqueadasCache = datas;
+    salvarJSON("datasBloqueadas", datas);
+}
+
 function normalizarAgendamento(agendamentoItem) {
     return {
         ...agendamentoItem,
@@ -131,15 +151,17 @@ function mensagemErroSupabase(erro) {
 async function carregarDadosSupabase(carregarDadosPrivados = false) {
     try {
         const tabelaAgendamentos = carregarDadosPrivados ? "agendamentos" : "agendamentos_publicos";
-        const [agendamentosResposta, diasResposta, horariosResposta] = await Promise.all([
+        const [agendamentosResposta, diasResposta, horariosResposta, datasBloqueadasResposta] = await Promise.all([
             supabaseClient.from(tabelaAgendamentos).select("*").order("data").order("horario"),
             supabaseClient.from("dias_disponiveis").select("*").order("dia_semana"),
-            supabaseClient.from("horarios_disponiveis").select("*").order("horario")
+            supabaseClient.from("horarios_disponiveis").select("*").order("horario"),
+            supabaseClient.from("datas_bloqueadas").select("*").order("data")
         ]);
 
         if (agendamentosResposta.error) throw agendamentosResposta.error;
         if (diasResposta.error) throw diasResposta.error;
         if (horariosResposta.error) throw horariosResposta.error;
+        if (datasBloqueadasResposta.error) throw datasBloqueadasResposta.error;
 
         salvarAgendamentos((agendamentosResposta.data || []).map(normalizarAgendamento));
 
@@ -157,6 +179,8 @@ async function carregarDadosSupabase(carregarDadosPrivados = false) {
                 ativo: item.ativo
             })));
         }
+
+        salvarDatasBloqueadas((datasBloqueadasResposta.data || []).map(item => item.data));
     } catch (erro) {
         console.error("Nao foi possivel carregar dados do Supabase.", erro);
         salvarAgendamentos(lerJSON("agendamentos", []));
@@ -165,6 +189,7 @@ async function carregarDadosSupabase(carregarDadosPrivados = false) {
             "horariosDisponiveis",
             HORARIOS_PADRAO.map(horario => ({ horario, ativo: true }))
         ));
+        salvarDatasBloqueadas(lerJSON("datasBloqueadas", []));
     }
 }
 
@@ -238,6 +263,27 @@ async function removerHorarioSupabase(horario) {
     if (error) throw error;
 }
 
+async function salvarDataBloqueadaSupabase(data) {
+    const { error } = await supabaseClient
+        .from("datas_bloqueadas")
+        .insert([{ data }]);
+
+    if (error) throw error;
+
+    salvarDatasBloqueadas([...obterDatasBloqueadas(), data].sort());
+}
+
+async function removerDataBloqueadaSupabase(data) {
+    const { error } = await supabaseClient
+        .from("datas_bloqueadas")
+        .delete()
+        .eq("data", data);
+
+    if (error) throw error;
+
+    salvarDatasBloqueadas(obterDatasBloqueadas().filter(item => item !== data));
+}
+
 function dataAtualISO() {
     const hoje = new Date();
     const ano = hoje.getFullYear();
@@ -252,6 +298,30 @@ function formatarData(data) {
 
     const partes = data.split("-");
     return `${partes[2]}/${partes[1]}/${partes[0]}`;
+}
+
+function mesAtualISO() {
+    return dataAtualISO().slice(0, 7);
+}
+
+function formatarMoeda(valor) {
+    return valor.toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL"
+    });
+}
+
+function precoParaNumero(preco) {
+    if (typeof preco === "number") return preco;
+    if (!preco) return 0;
+
+    return Number(
+        String(preco)
+            .replace("R$", "")
+            .replace(/\./g, "")
+            .replace(",", ".")
+            .trim()
+    ) || 0;
 }
 
 function ordenarHorarios(horarios) {
@@ -293,6 +363,7 @@ cardsServico.forEach(card => {
 function renderizarHorariosCliente() {
     const dataSelecionada = localStorage.getItem("data");
     const diasDisponiveis = obterDiasDisponiveis();
+    const datasBloqueadas = obterDatasBloqueadas();
     const horariosDisponiveis = obterHorariosDisponiveis().filter(item => item.ativo);
     const horariosOcupados = obterAgendamentos()
         .filter(item => item.data === dataSelecionada)
@@ -311,6 +382,12 @@ function renderizarHorariosCliente() {
     if (!diasDisponiveis[diaSemana]) {
         areaHorarios.style.display = "none";
         avisoData.textContent = "Este dia nao esta disponivel para agendamentos.";
+        return;
+    }
+
+    if (datasBloqueadas.includes(dataSelecionada)) {
+        areaHorarios.style.display = "none";
+        avisoData.textContent = "Esta data foi bloqueada pelo administrador.";
         return;
     }
 
@@ -355,6 +432,7 @@ function renderizarHorariosCliente() {
 
 function renderizarDiasCliente() {
     const diasDisponiveis = obterDiasDisponiveis();
+    const datasBloqueadas = obterDatasBloqueadas();
     const ordemDias = [1, 2, 3, 4, 5, 6, 0];
 
     diasCliente.innerHTML = "";
@@ -362,7 +440,8 @@ function renderizarDiasCliente() {
     ordemDias.forEach(dia => {
         const botao = document.createElement("button");
         const dataDia = proximaDataDoDia(dia);
-        const disponivel = Boolean(diasDisponiveis[dia]);
+        const dataBloqueada = datasBloqueadas.includes(dataDia);
+        const disponivel = Boolean(diasDisponiveis[dia]) && !dataBloqueada;
 
         botao.type = "button";
         botao.className = "card-dia";
@@ -431,6 +510,8 @@ formAgendamento.addEventListener("submit", async (e) => {
     agendamento.style.display = "none";
     cardsServico.forEach(card => card.classList.remove("selecionado"));
     renderizarHorariosCliente();
+    renderizarProximosAtendimentos();
+    renderizarFaturamento();
 });
 
 btnAdmin.addEventListener("click", () => {
@@ -454,7 +535,8 @@ formLogin.addEventListener("submit", async (e) => {
     });
 
     if (error) {
-        erroLogin.textContent = "E-mail ou senha incorretos.";
+        console.error("Erro no login.", mensagemErroSupabase(error), error);
+        erroLogin.textContent = mensagemErroSupabase(error) || "E-mail ou senha incorretos.";
         return;
     }
 
@@ -483,9 +565,16 @@ btnVoltar.addEventListener("click", async () => {
 });
 
 function carregarPainelAdmin() {
+    if (!filtroMesFaturamento.value) {
+        filtroMesFaturamento.value = mesAtualISO();
+    }
+
     renderizarDiasAdmin();
     renderizarHorariosAdmin();
+    renderizarDatasBloqueadas();
+    renderizarProximosAtendimentos();
     renderizarAgendamentos();
+    renderizarFaturamento();
     atualizarResumo();
 }
 
@@ -609,6 +698,84 @@ function renderizarHorariosAdmin() {
     });
 }
 
+function renderizarProximosAtendimentos() {
+    const agora = new Date();
+    const proximos = obterAgendamentos()
+        .filter(item => {
+            if (!item.data || !item.horario) return false;
+            return new Date(`${item.data}T${item.horario}:00`) >= agora;
+        })
+        .sort((a, b) => {
+            return `${a.data} ${a.horario}`.localeCompare(`${b.data} ${b.horario}`);
+        })
+        .slice(0, 5);
+
+    listaProximosAtendimentos.innerHTML = "";
+
+    if (proximos.length === 0) {
+        listaProximosAtendimentos.innerHTML = '<p class="mensagem-vazia">Nenhum proximo atendimento encontrado.</p>';
+        return;
+    }
+
+    proximos.forEach(item => {
+        const linha = document.createElement("div");
+        linha.className = "proximo-atendimento-item";
+
+        linha.innerHTML = `
+            <div>
+                <strong>${item.nome || "Cliente"}</strong>
+                <span>${item.servico || "Servico"} - ${formatarData(item.data)} as ${item.horario}</span>
+            </div>
+            <small>${item.whatsapp || ""}</small>
+        `;
+
+        listaProximosAtendimentos.appendChild(linha);
+    });
+}
+
+function renderizarDatasBloqueadas() {
+    const datas = obterDatasBloqueadas();
+
+    listaDatasBloqueadas.innerHTML = "";
+
+    if (datas.length === 0) {
+        listaDatasBloqueadas.innerHTML = '<p class="mensagem-vazia">Nenhuma data bloqueada.</p>';
+        return;
+    }
+
+    datas.forEach(data => {
+        const linha = document.createElement("div");
+        const texto = document.createElement("span");
+        const remover = document.createElement("button");
+
+        linha.className = "data-bloqueada-item";
+        texto.textContent = formatarData(data);
+        remover.type = "button";
+        remover.className = "btn-excluir pequeno";
+        remover.textContent = "Remover";
+
+        remover.addEventListener("click", async () => {
+            if (!confirm(`Remover bloqueio de ${formatarData(data)}?`)) return;
+
+            try {
+                await removerDataBloqueadaSupabase(data);
+            } catch (erro) {
+                console.error("Erro ao remover data bloqueada.", erro);
+                alert("Nao foi possivel remover a data bloqueada.");
+                return;
+            }
+
+            renderizarDatasBloqueadas();
+            renderizarDiasCliente();
+            renderizarHorariosCliente();
+        });
+
+        linha.appendChild(texto);
+        linha.appendChild(remover);
+        listaDatasBloqueadas.appendChild(linha);
+    });
+}
+
 function agendamentosFiltrados() {
     const termo = buscaAgendamento.value.trim().toLowerCase();
     const data = filtroData.value;
@@ -652,6 +819,7 @@ function renderizarAgendamentos() {
 
         linha.appendChild(criarCelula(agendamentoItem.nome));
         linha.appendChild(criarCelula(agendamentoItem.servico));
+        linha.appendChild(criarCelula(agendamentoItem.preco || formatarMoeda(0)));
         linha.appendChild(criarCelula(formatarData(agendamentoItem.data)));
         linha.appendChild(criarCelula(agendamentoItem.horario));
         linha.appendChild(criarCelula(agendamentoItem.whatsapp));
@@ -693,22 +861,139 @@ function criarCelula(valor) {
 function atualizarResumo() {
     const agendamentos = obterAgendamentos();
     const hoje = dataAtualISO();
+    const mesAtual = mesAtualISO();
     const proximos = agendamentos
         .filter(item => item.data >= hoje)
         .sort((a, b) => `${a.data} ${a.horario}`.localeCompare(`${b.data} ${b.horario}`));
 
-    totalAgendamentos.textContent = agendamentos.length;
+    totalAgendamentos.textContent = agendamentos.filter(item => {
+        return item.data && item.data.slice(0, 7) === mesAtual;
+    }).length;
     agendamentosHoje.textContent = agendamentos.filter(item => item.data === hoje).length;
     proximoHorario.textContent = proximos.length ? proximos[0].horario : "--:--";
 }
 
+function renderizarFaturamento() {
+    const mesSelecionado = filtroMesFaturamento.value || mesAtualISO();
+    const agendamentosMes = obterAgendamentos().filter(item => {
+        return item.data && item.data.slice(0, 7) === mesSelecionado;
+    });
+
+    const total = agendamentosMes.reduce((soma, item) => {
+        return soma + precoParaNumero(item.preco);
+    }, 0);
+
+    const totalAtendimentos = agendamentosMes.length;
+    const media = totalAtendimentos ? total / totalAtendimentos : 0;
+    const servicos = agendamentosMes.reduce((agrupados, item) => {
+        const nomeServico = item.servico || "Servico nao informado";
+        const valor = precoParaNumero(item.preco);
+
+        if (!agrupados[nomeServico]) {
+            agrupados[nomeServico] = {
+                quantidade: 0,
+                total: 0
+            };
+        }
+
+        agrupados[nomeServico].quantidade += 1;
+        agrupados[nomeServico].total += valor;
+
+        return agrupados;
+    }, {});
+
+    faturamentoMes.textContent = formatarMoeda(total);
+    atendimentosMes.textContent = totalAtendimentos;
+    ticketMedio.textContent = formatarMoeda(media);
+    faturamentoServicos.innerHTML = "";
+
+    const rankingServicos = Object.entries(servicos).sort((a, b) => {
+        return b[1].total - a[1].total;
+    });
+
+    if (rankingServicos.length === 0) {
+        faturamentoServicos.innerHTML = '<p class="mensagem-vazia">Nenhum atendimento encontrado para este mes.</p>';
+        return;
+    }
+
+    rankingServicos.forEach(([servico, dados]) => {
+        const linha = document.createElement("div");
+        linha.className = "faturamento-servico-item";
+
+        linha.innerHTML = `
+            <span>${servico}</span>
+            <strong>${formatarMoeda(dados.total)}</strong>
+            <small>${dados.quantidade} atendimento${dados.quantidade === 1 ? "" : "s"}</small>
+        `;
+
+        faturamentoServicos.appendChild(linha);
+    });
+}
+
+function valorCsv(valor) {
+    const texto = String(valor || "");
+    return `"${texto.replace(/"/g, '""')}"`;
+}
+
+function exportarAgendamentosCsv() {
+    const agendamentos = agendamentosFiltrados();
+    const cabecalho = ["Cliente", "Servico", "Valor", "Data", "Horario", "WhatsApp"];
+    const linhas = agendamentos.map(item => [
+        item.nome,
+        item.servico,
+        item.preco,
+        formatarData(item.data),
+        item.horario,
+        item.whatsapp
+    ]);
+
+    const csv = [cabecalho, ...linhas]
+        .map(linha => linha.map(valorCsv).join(";"))
+        .join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const dataArquivo = dataAtualISO();
+
+    link.href = url;
+    link.download = `agendamentos-${dataArquivo}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+}
+
 buscaAgendamento.addEventListener("input", renderizarAgendamentos);
 filtroData.addEventListener("change", renderizarAgendamentos);
+filtroMesFaturamento.addEventListener("change", renderizarFaturamento);
+btnExportarCsv.addEventListener("click", exportarAgendamentosCsv);
 
 btnLimparFiltros.addEventListener("click", () => {
     buscaAgendamento.value = "";
     filtroData.value = "";
     renderizarAgendamentos();
+});
+
+formDataBloqueada.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const data = novaDataBloqueada.value;
+
+    if (!data || obterDatasBloqueadas().includes(data)) {
+        novaDataBloqueada.value = "";
+        return;
+    }
+
+    try {
+        await salvarDataBloqueadaSupabase(data);
+    } catch (erro) {
+        console.error("Erro ao bloquear data.", erro);
+        alert("Nao foi possivel bloquear a data.");
+        return;
+    }
+
+    novaDataBloqueada.value = "";
+    renderizarDatasBloqueadas();
+    renderizarDiasCliente();
+    renderizarHorariosCliente();
 });
 
 function abrirEdicao(id) {
@@ -754,6 +1039,8 @@ formEditar.addEventListener("submit", async (e) => {
 
     formEditar.style.display = "none";
     renderizarAgendamentos();
+    renderizarProximosAtendimentos();
+    renderizarFaturamento();
     atualizarResumo();
 });
 
@@ -774,6 +1061,8 @@ async function excluirAgendamento(id) {
     }
 
     renderizarAgendamentos();
+    renderizarProximosAtendimentos();
+    renderizarFaturamento();
     atualizarResumo();
 }
 

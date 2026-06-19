@@ -123,7 +123,7 @@
 
     <div class="admin-resumo">
         <div class="resumo-card">
-            <span>Total</span>
+            <span>Este mes</span>
             <strong id="total-agendamentos">0</strong>
         </div>
 
@@ -136,6 +136,36 @@
             <span>Proximo</span>
             <strong id="proximo-horario">--:--</strong>
         </div>
+    </div>
+
+    <div class="admin-card faturamento-card">
+        <div class="admin-card-cabecalho linha">
+            <div>
+                <h3>Faturamento</h3>
+                <p>Acompanhe o resultado dos atendimentos por mes.</p>
+            </div>
+
+            <input type="month" id="filtro-mes-faturamento" class="input-mes-faturamento">
+        </div>
+
+        <div class="faturamento-resumo">
+            <div class="faturamento-item destaque">
+                <span>Faturamento do mes</span>
+                <strong id="faturamento-mes">R$ 0,00</strong>
+            </div>
+
+            <div class="faturamento-item">
+                <span>Atendimentos</span>
+                <strong id="atendimentos-mes">0</strong>
+            </div>
+
+            <div class="faturamento-item">
+                <span>Ticket medio</span>
+                <strong id="ticket-medio">R$ 0,00</strong>
+            </div>
+        </div>
+
+        <div class="faturamento-servicos" id="faturamento-servicos"></div>
     </div>
 
     <div class="admin-grid">
@@ -171,6 +201,31 @@
         </div>
     </div>
 
+    <div class="admin-grid">
+        <div class="admin-card">
+            <div class="admin-card-cabecalho">
+                <h3>Proximos atendimentos</h3>
+                <p>Veja rapidamente quem esta chegando na agenda.</p>
+            </div>
+
+            <div id="lista-proximos-atendimentos" class="lista-proximos-atendimentos"></div>
+        </div>
+
+        <div class="admin-card">
+            <div class="admin-card-cabecalho">
+                <h3>Datas bloqueadas</h3>
+                <p>Bloqueie feriados, folgas ou compromissos especificos.</p>
+            </div>
+
+            <form id="form-data-bloqueada" class="form-data-bloqueada">
+                <input type="date" id="nova-data-bloqueada" required>
+                <button type="submit">Bloquear</button>
+            </form>
+
+            <div id="lista-datas-bloqueadas" class="lista-datas-bloqueadas"></div>
+        </div>
+    </div>
+
     <div class="admin-card admin-card-lista">
         <div class="admin-card-cabecalho linha">
             <div>
@@ -178,7 +233,10 @@
                 <p>Consulte, edite ou exclua os atendimentos salvos.</p>
             </div>
 
-            <button id="btn-limpar-filtros" class="btn-secundario">Limpar busca</button>
+            <div class="acoes-cabecalho">
+                <button id="btn-exportar-csv" class="btn-secundario">Exportar CSV</button>
+                <button id="btn-limpar-filtros" class="btn-secundario">Limpar busca</button>
+            </div>
         </div>
 
         <div class="filtros-admin">
@@ -192,6 +250,7 @@
                     <tr>
                         <th>Cliente</th>
                         <th>Servico</th>
+                        <th>Valor</th>
                         <th>Data</th>
                         <th>Horario</th>
                         <th>WhatsApp</th>
