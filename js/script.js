@@ -128,10 +128,11 @@ function mensagemErroSupabase(erro) {
     ].filter(Boolean).join("\n");
 }
 
-async function carregarDadosSupabase() {
+async function carregarDadosSupabase(carregarDadosPrivados = false) {
     try {
+        const tabelaAgendamentos = carregarDadosPrivados ? "agendamentos" : "agendamentos_publicos";
         const [agendamentosResposta, diasResposta, horariosResposta] = await Promise.all([
-            supabaseClient.from("agendamentos").select("*").order("data").order("horario"),
+            supabaseClient.from(tabelaAgendamentos).select("*").order("data").order("horario"),
             supabaseClient.from("dias_disponiveis").select("*").order("dia_semana"),
             supabaseClient.from("horarios_disponiveis").select("*").order("horario")
         ]);
@@ -168,15 +169,13 @@ async function carregarDadosSupabase() {
 }
 
 async function criarAgendamentoSupabase(agendamentoCliente) {
-    const { data, error } = await supabaseClient
+    const { error } = await supabaseClient
         .from("agendamentos")
-        .insert([agendamentoCliente])
-        .select()
-        .single();
+        .insert([agendamentoCliente]);
 
     if (error) throw error;
 
-    salvarAgendamentos([...obterAgendamentos(), normalizarAgendamento(data)]);
+    salvarAgendamentos([...obterAgendamentos(), normalizarAgendamento(agendamentoCliente)]);
 }
 
 async function atualizarAgendamentoSupabase(id, agendamentoAtualizado) {
@@ -441,26 +440,46 @@ btnAdmin.addEventListener("click", () => {
     erroLogin.textContent = "";
 });
 
-formLogin.addEventListener("submit", (e) => {
+formLogin.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const usuario = document.getElementById("usuario").value.trim();
+    const email = document.getElementById("usuario").value.trim();
     const senha = document.getElementById("senha").value;
 
-    if (usuario === "admin" && senha === "1234") {
-        areaLogin.style.display = "none";
-        areaAdmin.style.display = "block";
-        carregarPainelAdmin();
-    } else {
-        erroLogin.textContent = "Usuario ou senha incorretos.";
+    erroLogin.textContent = "";
+
+    const { error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password: senha
+    });
+
+    if (error) {
+        erroLogin.textContent = "E-mail ou senha incorretos.";
+        return;
     }
+
+    const { data: usuarioAdmin, error: erroAdmin } = await supabaseClient.rpc("eh_admin");
+
+    if (erroAdmin || !usuarioAdmin) {
+        await supabaseClient.auth.signOut();
+        erroLogin.textContent = "Este usuario nao tem permissao de administrador.";
+        return;
+    }
+
+    areaLogin.style.display = "none";
+    areaAdmin.style.display = "block";
+    await carregarDadosSupabase(true);
+    carregarPainelAdmin();
 });
 
-btnVoltar.addEventListener("click", () => {
+btnVoltar.addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
     areaAdmin.style.display = "none";
     areaLogin.style.display = "none";
     areaCliente.style.display = "block";
     formLogin.reset();
+    await carregarDadosSupabase(false);
+    renderizarDiasCliente();
 });
 
 function carregarPainelAdmin() {
