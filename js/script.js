@@ -65,6 +65,10 @@ const NOMES_DIAS = {
     6: "Sabado"
 };
 
+let agendamentosCache = [];
+let diasDisponiveisCache = { ...DIAS_PADRAO };
+let horariosDisponiveisCache = HORARIOS_PADRAO.map(horario => ({ horario, ativo: true }));
+
 function lerJSON(chave, fallback) {
     const dados = localStorage.getItem(chave);
 
@@ -82,30 +86,157 @@ function salvarJSON(chave, valor) {
 }
 
 function obterAgendamentos() {
-    return lerJSON("agendamentos", []);
+    return agendamentosCache;
 }
 
 function salvarAgendamentos(agendamentos) {
+    agendamentosCache = agendamentos;
     salvarJSON("agendamentos", agendamentos);
 }
 
 function obterDiasDisponiveis() {
-    return lerJSON("diasDisponiveis", DIAS_PADRAO);
+    return diasDisponiveisCache;
 }
 
 function salvarDiasDisponiveis(dias) {
+    diasDisponiveisCache = dias;
     salvarJSON("diasDisponiveis", dias);
 }
 
 function obterHorariosDisponiveis() {
-    return lerJSON(
-        "horariosDisponiveis",
-        HORARIOS_PADRAO.map(horario => ({ horario, ativo: true }))
-    );
+    return horariosDisponiveisCache;
 }
 
 function salvarHorariosDisponiveis(horarios) {
+    horariosDisponiveisCache = horarios;
     salvarJSON("horariosDisponiveis", horarios);
+}
+
+function normalizarAgendamento(agendamentoItem) {
+    return {
+        ...agendamentoItem,
+        horario: agendamentoItem.horario ? agendamentoItem.horario.slice(0, 5) : agendamentoItem.horario
+    };
+}
+
+function mensagemErroSupabase(erro) {
+    return [
+        erro.message,
+        erro.details,
+        erro.hint,
+        erro.code ? `Codigo: ${erro.code}` : ""
+    ].filter(Boolean).join("\n");
+}
+
+async function carregarDadosSupabase() {
+    try {
+        const [agendamentosResposta, diasResposta, horariosResposta] = await Promise.all([
+            supabaseClient.from("agendamentos").select("*").order("data").order("horario"),
+            supabaseClient.from("dias_disponiveis").select("*").order("dia_semana"),
+            supabaseClient.from("horarios_disponiveis").select("*").order("horario")
+        ]);
+
+        if (agendamentosResposta.error) throw agendamentosResposta.error;
+        if (diasResposta.error) throw diasResposta.error;
+        if (horariosResposta.error) throw horariosResposta.error;
+
+        salvarAgendamentos((agendamentosResposta.data || []).map(normalizarAgendamento));
+
+        if (diasResposta.data && diasResposta.data.length > 0) {
+            const dias = { ...DIAS_PADRAO };
+            diasResposta.data.forEach(item => {
+                dias[item.dia_semana] = item.ativo;
+            });
+            salvarDiasDisponiveis(dias);
+        }
+
+        if (horariosResposta.data && horariosResposta.data.length > 0) {
+            salvarHorariosDisponiveis(horariosResposta.data.map(item => ({
+                horario: item.horario.slice(0, 5),
+                ativo: item.ativo
+            })));
+        }
+    } catch (erro) {
+        console.error("Nao foi possivel carregar dados do Supabase.", erro);
+        salvarAgendamentos(lerJSON("agendamentos", []));
+        salvarDiasDisponiveis(lerJSON("diasDisponiveis", DIAS_PADRAO));
+        salvarHorariosDisponiveis(lerJSON(
+            "horariosDisponiveis",
+            HORARIOS_PADRAO.map(horario => ({ horario, ativo: true }))
+        ));
+    }
+}
+
+async function criarAgendamentoSupabase(agendamentoCliente) {
+    const { data, error } = await supabaseClient
+        .from("agendamentos")
+        .insert([agendamentoCliente])
+        .select()
+        .single();
+
+    if (error) throw error;
+
+    salvarAgendamentos([...obterAgendamentos(), normalizarAgendamento(data)]);
+}
+
+async function atualizarAgendamentoSupabase(id, agendamentoAtualizado) {
+    const { data, error } = await supabaseClient
+        .from("agendamentos")
+        .update(agendamentoAtualizado)
+        .eq("id", id)
+        .select()
+        .single();
+
+    if (error) throw error;
+
+    salvarAgendamentos(obterAgendamentos().map(item => {
+        return item.id === id ? normalizarAgendamento(data) : item;
+    }));
+}
+
+async function excluirAgendamentoSupabase(id) {
+    const { error } = await supabaseClient
+        .from("agendamentos")
+        .delete()
+        .eq("id", id);
+
+    if (error) throw error;
+
+    salvarAgendamentos(obterAgendamentos().filter(item => item.id !== id));
+}
+
+async function salvarDiasDisponiveisSupabase(dias) {
+    salvarDiasDisponiveis(dias);
+
+    const registros = Object.entries(dias).map(([dia_semana, ativo]) => ({
+        dia_semana: Number(dia_semana),
+        ativo
+    }));
+
+    const { error } = await supabaseClient
+        .from("dias_disponiveis")
+        .upsert(registros, { onConflict: "dia_semana" });
+
+    if (error) throw error;
+}
+
+async function salvarHorariosDisponiveisSupabase(horarios) {
+    salvarHorariosDisponiveis(ordenarHorarios(horarios));
+
+    const { error } = await supabaseClient
+        .from("horarios_disponiveis")
+        .upsert(horarios, { onConflict: "horario" });
+
+    if (error) throw error;
+}
+
+async function removerHorarioSupabase(horario) {
+    const { error } = await supabaseClient
+        .from("horarios_disponiveis")
+        .delete()
+        .eq("horario", horario);
+
+    if (error) throw error;
 }
 
 function dataAtualISO() {
@@ -265,7 +396,7 @@ function renderizarDiasCliente() {
     });
 }
 
-formAgendamento.addEventListener("submit", (e) => {
+formAgendamento.addEventListener("submit", async (e) => {
     e.preventDefault();
 
     const agendamentoCliente = {
@@ -277,14 +408,18 @@ formAgendamento.addEventListener("submit", (e) => {
         whatsapp: document.getElementById("whatsapp").value.trim()
     };
 
-    if (!agendamentoCliente.horario) {
-        alert("Escolha um horario antes de confirmar.");
+    if (!agendamentoCliente.data || !agendamentoCliente.horario) {
+        alert("Escolha um dia e um horario antes de confirmar.");
         return;
     }
 
-    const agendamentos = obterAgendamentos();
-    agendamentos.push(agendamentoCliente);
-    salvarAgendamentos(agendamentos);
+    try {
+        await criarAgendamentoSupabase(agendamentoCliente);
+    } catch (erro) {
+        console.error("Erro ao salvar agendamento.", mensagemErroSupabase(erro), erro);
+        alert(`Nao foi possivel confirmar o agendamento.\n\n${mensagemErroSupabase(erro)}`);
+        return;
+    }
 
     alert("Agendamento confirmado com sucesso!");
 
@@ -296,6 +431,7 @@ formAgendamento.addEventListener("submit", (e) => {
     servicos.style.display = "block";
     agendamento.style.display = "none";
     cardsServico.forEach(card => card.classList.remove("selecionado"));
+    renderizarHorariosCliente();
 });
 
 btnAdmin.addEventListener("click", () => {
@@ -343,16 +479,23 @@ function renderizarDiasAdmin() {
 }
 
 checkboxesDia.forEach(checkbox => {
-    checkbox.addEventListener("change", () => {
+    checkbox.addEventListener("change", async () => {
         const diasDisponiveis = obterDiasDisponiveis();
         diasDisponiveis[checkbox.dataset.dia] = checkbox.checked;
-        salvarDiasDisponiveis(diasDisponiveis);
+
+        try {
+            await salvarDiasDisponiveisSupabase(diasDisponiveis);
+        } catch (erro) {
+            console.error("Erro ao salvar dias disponiveis.", erro);
+            alert("Nao foi possivel salvar os dias disponiveis.");
+        }
+
         renderizarDiasCliente();
         renderizarHorariosCliente();
     });
 });
 
-formHorario.addEventListener("submit", (e) => {
+formHorario.addEventListener("submit", async (e) => {
     e.preventDefault();
 
     const horario = novoHorario.value;
@@ -365,7 +508,14 @@ formHorario.addEventListener("submit", (e) => {
     }
 
     horarios.push({ horario, ativo: true });
-    salvarHorariosDisponiveis(ordenarHorarios(horarios));
+
+    try {
+        await salvarHorariosDisponiveisSupabase(horarios);
+    } catch (erro) {
+        console.error("Erro ao salvar horario.", erro);
+        alert("Nao foi possivel salvar o horario.");
+        return;
+    }
 
     novoHorario.value = "";
     renderizarHorariosAdmin();
@@ -393,7 +543,7 @@ function renderizarHorariosAdmin() {
         remover.textContent = "Remover";
         remover.className = "btn-excluir pequeno";
 
-        checkbox.addEventListener("change", () => {
+        checkbox.addEventListener("change", async () => {
             const horariosAtualizados = obterHorariosDisponiveis().map(horario => {
                 if (horario.horario === item.horario) {
                     return { ...horario, ativo: checkbox.checked };
@@ -402,18 +552,32 @@ function renderizarHorariosAdmin() {
                 return horario;
             });
 
-            salvarHorariosDisponiveis(horariosAtualizados);
+            try {
+                await salvarHorariosDisponiveisSupabase(horariosAtualizados);
+            } catch (erro) {
+                console.error("Erro ao atualizar horario.", erro);
+                alert("Nao foi possivel atualizar o horario.");
+            }
+
             renderizarHorariosCliente();
         });
 
-        remover.addEventListener("click", () => {
+        remover.addEventListener("click", async () => {
             if (!confirm(`Remover o horario ${item.horario}?`)) return;
 
             const horariosAtualizados = obterHorariosDisponiveis().filter(horario => {
                 return horario.horario !== item.horario;
             });
 
-            salvarHorariosDisponiveis(horariosAtualizados);
+            try {
+                await removerHorarioSupabase(item.horario);
+                salvarHorariosDisponiveis(horariosAtualizados);
+            } catch (erro) {
+                console.error("Erro ao remover horario.", erro);
+                alert("Nao foi possivel remover o horario.");
+                return;
+            }
+
             renderizarHorariosAdmin();
             renderizarHorariosCliente();
         });
@@ -431,7 +595,6 @@ function agendamentosFiltrados() {
     const data = filtroData.value;
 
     return obterAgendamentos()
-        .map((agendamentoItem, index) => ({ ...agendamentoItem, index }))
         .filter(agendamentoItem => {
             const textoCompleto = [
                 agendamentoItem.nome,
@@ -478,12 +641,12 @@ function renderizarAgendamentos() {
 
         botaoEditar.type = "button";
         botaoEditar.className = "btn-editar";
-        botaoEditar.dataset.index = agendamentoItem.index;
+        botaoEditar.dataset.id = agendamentoItem.id;
         botaoEditar.textContent = "Editar";
 
         botaoExcluir.type = "button";
         botaoExcluir.className = "btn-excluir pequeno";
-        botaoExcluir.dataset.index = agendamentoItem.index;
+        botaoExcluir.dataset.id = agendamentoItem.id;
         botaoExcluir.textContent = "Excluir";
 
         acoes.appendChild(botaoEditar);
@@ -494,11 +657,11 @@ function renderizarAgendamentos() {
     });
 
     document.querySelectorAll(".btn-editar").forEach(botao => {
-        botao.addEventListener("click", () => abrirEdicao(Number(botao.dataset.index)));
+        botao.addEventListener("click", () => abrirEdicao(Number(botao.dataset.id)));
     });
 
     document.querySelectorAll(".acoes-tabela .btn-excluir").forEach(botao => {
-        botao.addEventListener("click", () => excluirAgendamento(Number(botao.dataset.index)));
+        botao.addEventListener("click", () => excluirAgendamento(Number(botao.dataset.id)));
     });
 }
 
@@ -529,13 +692,13 @@ btnLimparFiltros.addEventListener("click", () => {
     renderizarAgendamentos();
 });
 
-function abrirEdicao(index) {
+function abrirEdicao(id) {
     const agendamentos = obterAgendamentos();
-    const agendamentoItem = agendamentos[index];
+    const agendamentoItem = agendamentos.find(item => item.id === id);
 
     if (!agendamentoItem) return;
 
-    editarIndex.value = index;
+    editarIndex.value = id;
     editarNome.value = agendamentoItem.nome;
     editarWhatsapp.value = agendamentoItem.whatsapp;
     editarServico.value = agendamentoItem.servico;
@@ -546,16 +709,15 @@ function abrirEdicao(index) {
     formEditar.scrollIntoView({ behavior: "smooth" });
 }
 
-formEditar.addEventListener("submit", (e) => {
+formEditar.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const index = Number(editarIndex.value);
-    const agendamentos = obterAgendamentos();
+    const id = Number(editarIndex.value);
+    const agendamentoItem = obterAgendamentos().find(item => item.id === id);
 
-    if (!agendamentos[index]) return;
+    if (!agendamentoItem) return;
 
-    agendamentos[index] = {
-        ...agendamentos[index],
+    const agendamentoAtualizado = {
         nome: editarNome.value.trim(),
         whatsapp: editarWhatsapp.value.trim(),
         servico: editarServico.value.trim(),
@@ -563,7 +725,14 @@ formEditar.addEventListener("submit", (e) => {
         horario: editarHorario.value
     };
 
-    salvarAgendamentos(agendamentos);
+    try {
+        await atualizarAgendamentoSupabase(id, agendamentoAtualizado);
+    } catch (erro) {
+        console.error("Erro ao editar agendamento.", erro);
+        alert("Nao foi possivel editar o agendamento.");
+        return;
+    }
+
     formEditar.style.display = "none";
     renderizarAgendamentos();
     atualizarResumo();
@@ -574,13 +743,21 @@ btnCancelarEdicao.addEventListener("click", () => {
     formEditar.reset();
 });
 
-function excluirAgendamento(index) {
+async function excluirAgendamento(id) {
     if (!confirm("Deseja realmente excluir este agendamento?")) return;
 
-    const agendamentos = obterAgendamentos();
-    agendamentos.splice(index, 1);
-    salvarAgendamentos(agendamentos);
+    try {
+        await excluirAgendamentoSupabase(id);
+    } catch (erro) {
+        console.error("Erro ao excluir agendamento.", erro);
+        alert("Nao foi possivel excluir o agendamento.");
+        return;
+    }
 
     renderizarAgendamentos();
     atualizarResumo();
 }
+
+carregarDadosSupabase().then(() => {
+    renderizarDiasCliente();
+});
