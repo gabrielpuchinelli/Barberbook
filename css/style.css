@@ -738,7 +738,7 @@ header {
 }
 
 footer {
-    margin-top: auto;
+    margin-top: 5px;
     background: #1c1c1c;
     border-top: 2px solid #d4af37;
     padding: 30px 20px;
