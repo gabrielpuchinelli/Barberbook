@@ -156,12 +156,35 @@ function mensagemErroSupabase(erro) {
 async function carregarDadosSupabase(carregarDadosPrivados = false) {
     try {
         const tabelaAgendamentos = carregarDadosPrivados ? "agendamentos" : "agendamentos_publicos";
+
+        // Se estiver carregando dados privados (painel admin), e o usuário NÃO for admin,
+        // garantimos no frontend que ele verá apenas os próprios agendamentos.
+        let filtroBarbeiro = null;
+        if (carregarDadosPrivados) {
+            try {
+                const { data: ehAdm } = await supabaseClient.rpc("eh_admin");
+                if (!ehAdm) {
+                    const { data: barbeiroId } = await supabaseClient.rpc("barbeiro_atual_id");
+                    filtroBarbeiro = barbeiroId;
+                }
+            } catch {
+                // se falhar, deixa sem filtro (mas o correto é ajustar RLS no Supabase)
+            }
+        }
+
+        const queryAgendamentos = supabaseClient
+            .from(tabelaAgendamentos)
+            .select("*")
+            .order("data")
+            .order("horario");
+
         const [agendamentosResposta, diasResposta, horariosResposta, datasBloqueadasResposta] = await Promise.all([
-            supabaseClient.from(tabelaAgendamentos).select("*").order("data").order("horario"),
+            filtroBarbeiro ? queryAgendamentos.eq("barbeiro_id", filtroBarbeiro) : queryAgendamentos,
             supabaseClient.from("dias_disponiveis").select("*").order("dia_semana"),
             supabaseClient.from("horarios_disponiveis").select("*").order("horario"),
             supabaseClient.from("datas_bloqueadas").select("*").order("data")
         ]);
+
 
         if (agendamentosResposta.error) throw agendamentosResposta.error;
         if (diasResposta.error) throw diasResposta.error;
@@ -471,15 +494,21 @@ function renderizarHorariosCliente() {
     ordenarHorarios(horariosDisponiveis).forEach(item => {
         const botao = document.createElement("button");
         const horarioOcupado = horariosOcupados.includes(item.horario);
+        const barbeiroId = localStorage.getItem("barbeiro_id");
+        const barbeiroOcupado = Boolean(barbeiroId) && obterAgendamentos()
+            .some(a => a.data === dataSelecionada && a.horario === item.horario && String(a.barbeiro_id) === String(barbeiroId));
 
         botao.type = "button";
         botao.className = "card-horario";
-        botao.textContent = horarioOcupado ? `${item.horario} ocupado` : item.horario;
-        botao.disabled = horarioOcupado;
+        const ocupado = horarioOcupado || barbeiroOcupado;
 
-        if (horarioOcupado) {
+        botao.textContent = ocupado ? `${item.horario} ocupado` : item.horario;
+        botao.disabled = ocupado;
+
+        if (ocupado) {
             botao.classList.add("indisponivel");
         }
+
 
             botao.addEventListener("click", () => {
                 if (horarioOcupado) return;
@@ -607,6 +636,25 @@ btnAdmin.addEventListener("click", () => {
     erroLogin.textContent = "";
 });
 
+// Ao entrar na área administrativa, se o usuário NÃO for admin, vamos bloquear o acesso.
+// (Isso evita que um barbeiro consiga entrar na tela de agendamentos que mostra tudo.)
+async function verificarAcessoAdministrador() {
+    try {
+        const { data: usuarioData } = await supabaseClient.auth.getUser();
+        if (!usuarioData?.user) return false;
+
+        const { data: ehAdm, error: errAdm } = await supabaseClient
+            .rpc("eh_admin");
+
+        if (errAdm) return false;
+        return Boolean(ehAdm);
+    } catch {
+        return false;
+    }
+}
+
+
+
 formLogin.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -636,8 +684,19 @@ formLogin.addEventListener("submit", async (e) => {
 
     areaLogin.style.display = "none";
     areaAdmin.style.display = "block";
+
+    // Se não for admin, bloqueia acesso ao painel administrativo.
+    const temAcessoAdmin = await verificarAcessoAdministrador();
+    if (!temAcessoAdmin) {
+        areaAdmin.style.display = "none";
+        areaLogin.style.display = "block";
+        erroLogin.textContent = "Acesso restrito: apenas administradores.";
+        return;
+    }
+
     await carregarDadosSupabase(true);
     carregarPainelAdmin();
+
 });
 
 btnVoltar.addEventListener("click", async () => {
