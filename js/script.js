@@ -908,7 +908,9 @@ function renderizarAgendamentos() {
         linha.appendChild(criarCelula(agendamentoItem.preco || formatarMoeda(0)));
         linha.appendChild(criarCelula(formatarData(agendamentoItem.data)));
         linha.appendChild(criarCelula(agendamentoItem.horario));
+        linha.appendChild(criarCelula(agendamentoItem.barbeiro_nome));
         linha.appendChild(criarCelula(agendamentoItem.whatsapp));
+
 
         acoes.className = "acoes-tabela";
 
