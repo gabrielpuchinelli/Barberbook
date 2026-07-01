@@ -258,6 +258,21 @@ header {
     color: #fff;
 }
 
+#barbeiros {
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 0 20px;
+    text-align: center;
+}
+
+.lista-barbeiros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+}
+
+
 .horarios {
     display: flex;
     flex-wrap: wrap;

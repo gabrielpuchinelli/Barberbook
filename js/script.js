@@ -8,6 +8,11 @@ const horariosCliente = document.getElementById("horarios-cliente");
 const dadosCliente = document.getElementById("dados-cliente");
 const formAgendamento = document.getElementById("form-agendamento");
 
+const barbeiros = document.getElementById("barbeiros");
+const listaBarbeiros = document.getElementById("lista-barbeiros");
+const avisoBarbeiro = document.getElementById("aviso-barbeiro");
+
+
 const btnAdmin = document.getElementById("btn-admin");
 const areaCliente = document.getElementById("area-cliente");
 const areaLogin = document.getElementById("area-login");
@@ -342,8 +347,71 @@ function proximaDataDoDia(diaSemana) {
     return `${ano}-${mes}-${dia}`;
 }
 
+const BARBEIROS_FALLBACK = [
+    { id: "1", nome: "Niel" },
+    { id: "2", nome: "Edvan" },
+];
+
+async function carregarBarbeirosAtivos() {
+    if (!supabaseClient) return BARBEIROS_FALLBACK;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from("barbeiros")
+            .select("id, nome")
+            .eq("ativo", true)
+            .order("nome");
+
+        if (error) throw error;
+
+        return data && data.length ? data.map(b => ({ id: b.id, nome: b.nome })) : [];
+    } catch (erro) {
+        console.error("Erro ao carregar barbeiros.", erro);
+        return BARBEIROS_FALLBACK;
+    }
+}
+
+function renderizarBarbeirosCliente(barbeirosLista) {
+    if (!listaBarbeiros) return;
+
+    const selecionadoId = localStorage.getItem("barbeiro_id");
+    listaBarbeiros.innerHTML = "";
+    avisoBarbeiro.textContent = "";
+
+    if (!barbeirosLista || barbeirosLista.length === 0) {
+        avisoBarbeiro.textContent = "Nenhum barbeiro ativo no momento.";
+        return;
+    }
+
+    barbeirosLista.forEach(barbeiro => {
+        const botao = document.createElement("button");
+        botao.type = "button";
+        botao.className = "card-horario";
+        const estaSelecionado = String(selecionadoId) === String(barbeiro.id);
+        if (estaSelecionado) botao.classList.add("selecionado");
+
+        botao.textContent = barbeiro.nome;
+        botao.addEventListener("click", () => {
+            localStorage.setItem("barbeiro_id", barbeiro.id);
+            localStorage.setItem("barbeiro_nome", barbeiro.nome);
+
+            document.querySelectorAll("#lista-barbeiros .card-horario").forEach(btn => {
+                btn.classList.remove("selecionado");
+            });
+            botao.classList.add("selecionado");
+
+            barbeiros.style.display = "none";
+            dadosCliente.style.display = "block";
+            dadosCliente.scrollIntoView({ behavior: "smooth" });
+        });
+
+        listaBarbeiros.appendChild(botao);
+    });
+}
+
 cardsServico.forEach(card => {
     card.addEventListener("click", () => {
+
         const servicoEscolhido = card.dataset.servico;
         const precoEscolhido = card.dataset.preco;
 
@@ -362,6 +430,7 @@ cardsServico.forEach(card => {
 
 function renderizarHorariosCliente() {
     const dataSelecionada = localStorage.getItem("data");
+
     const diasDisponiveis = obterDiasDisponiveis();
     const datasBloqueadas = obterDatasBloqueadas();
     const horariosDisponiveis = obterHorariosDisponiveis().filter(item => item.ativo);
@@ -412,19 +481,27 @@ function renderizarHorariosCliente() {
             botao.classList.add("indisponivel");
         }
 
-        botao.addEventListener("click", () => {
-            if (horarioOcupado) return;
+            botao.addEventListener("click", () => {
+                if (horarioOcupado) return;
 
-            document.querySelectorAll(".card-horario").forEach(horario => {
-                horario.classList.remove("selecionado");
+                document.querySelectorAll(".card-horario").forEach(horario => {
+                    horario.classList.remove("selecionado");
+                });
+
+                botao.classList.add("selecionado");
+                localStorage.setItem("horario", item.horario);
+
+                dadosCliente.style.display = "none";
+
+                barbeiros.style.display = "block";
+                barbeiros.scrollIntoView({ behavior: "smooth" });
+
+                localStorage.removeItem("barbeiro_id");
+                localStorage.removeItem("barbeiro_nome");
+
+                carregarBarbeirosAtivos().then(renderizarBarbeirosCliente);
             });
 
-            botao.classList.add("selecionado");
-            localStorage.setItem("horario", item.horario);
-
-            dadosCliente.style.display = "block";
-            dadosCliente.scrollIntoView({ behavior: "smooth" });
-        });
 
         horariosCliente.appendChild(botao);
     });
@@ -482,14 +559,23 @@ formAgendamento.addEventListener("submit", async (e) => {
         preco: localStorage.getItem("preco"),
         data: localStorage.getItem("data"),
         horario: localStorage.getItem("horario"),
+        barbeiro_id: localStorage.getItem("barbeiro_id"),
+        barbeiro_nome: localStorage.getItem("barbeiro_nome"),
         nome: document.getElementById("nome").value.trim(),
         whatsapp: document.getElementById("whatsapp").value.trim()
     };
+
 
     if (!agendamentoCliente.data || !agendamentoCliente.horario) {
         alert("Escolha um dia e um horario antes de confirmar.");
         return;
     }
+
+    if (!agendamentoCliente.barbeiro_id || !agendamentoCliente.barbeiro_nome) {
+        alert("Escolha um barbeiro antes de confirmar.");
+        return;
+    }
+
 
     try {
         await criarAgendamentoSupabase(agendamentoCliente);
