@@ -5,18 +5,19 @@ const avisoData = document.getElementById("aviso-data");
 const diasCliente = document.getElementById("dias-cliente");
 const areaHorarios = document.getElementById("area-horarios");
 const horariosCliente = document.getElementById("horarios-cliente");
+const barbeirosSection = document.getElementById("barbeiros");
+const listaBarbeiros = document.getElementById("lista-barbeiros");
 const dadosCliente = document.getElementById("dados-cliente");
 const formAgendamento = document.getElementById("form-agendamento");
 
-const barbeiros = document.getElementById("barbeiros");
-const listaBarbeiros = document.getElementById("lista-barbeiros");
-const avisoBarbeiro = document.getElementById("aviso-barbeiro");
+
 
 
 const btnAdmin = document.getElementById("btn-admin");
 const areaCliente = document.getElementById("area-cliente");
 const areaLogin = document.getElementById("area-login");
 const areaAdmin = document.getElementById("area-admin");
+const adminSaudacao = document.getElementById("admin-saudacao");
 const formLogin = document.getElementById("form-login");
 const erroLogin = document.getElementById("erro-login");
 const btnVoltar = document.getElementById("btn-voltar");
@@ -84,6 +85,9 @@ let agendamentosCache = [];
 let diasDisponiveisCache = { ...DIAS_PADRAO };
 let horariosDisponiveisCache = HORARIOS_PADRAO.map(horario => ({ horario, ativo: true }));
 let datasBloqueadasCache = [];
+let barbeirosCache = [];
+let usuarioTipo = null;
+let usuarioBarbeiroId = null;
 
 function lerJSON(chave, fallback) {
     const dados = localStorage.getItem(chave);
@@ -137,6 +141,47 @@ function salvarDatasBloqueadas(datas) {
     salvarJSON("datasBloqueadas", datas);
 }
 
+function obterBarbeiros() {
+    return barbeirosCache;
+}
+
+function salvarBarbeiros(barbeiros) {
+    barbeirosCache = barbeiros;
+    salvarJSON("barbeiros", barbeiros);
+}
+
+function renderizarBarbeirosCliente() {
+    const barbeiroSelecionado = localStorage.getItem("barbeiro_id");
+    const barbeiros = obterBarbeiros();
+
+    listaBarbeiros.innerHTML = "";
+
+    if (barbeiros.length === 0) {
+        listaBarbeiros.innerHTML = '<p class="mensagem-vazia">Nenhum barbeiro disponivel no momento.</p>';
+        return;
+    }
+
+    barbeiros.forEach(item => {
+        const botao = document.createElement("button");
+        botao.type = "button";
+        botao.className = "card-barbeiro";
+        botao.textContent = item.nome;
+
+        if (String(item.id) === String(barbeiroSelecionado)) {
+            botao.classList.add("selecionado");
+        }
+
+        botao.addEventListener("click", () => {
+            localStorage.setItem("barbeiro_id", item.id || "");
+            localStorage.setItem("barbeiro_nome", item.nome);
+            renderizarBarbeirosCliente();
+            renderizarHorariosCliente();
+        });
+
+        listaBarbeiros.appendChild(botao);
+    });
+}
+
 function normalizarAgendamento(agendamentoItem) {
     return {
         ...agendamentoItem,
@@ -157,19 +202,20 @@ async function carregarDadosSupabase(carregarDadosPrivados = false) {
     try {
         const tabelaAgendamentos = carregarDadosPrivados ? "agendamentos" : "agendamentos_publicos";
 
-        // Se estiver carregando dados privados (painel admin), e o usuário NÃO for admin,
-        // garantimos no frontend que ele verá apenas os próprios agendamentos.
         let filtroBarbeiro = null;
-        if (carregarDadosPrivados) {
-            try {
-                const { data: ehAdm } = await supabaseClient.rpc("eh_admin");
-                if (!ehAdm) {
-                    const { data: barbeiroId } = await supabaseClient.rpc("barbeiro_atual_id");
-                    filtroBarbeiro = barbeiroId;
+        if (carregarDadosPrivados && usuarioTipo === "barbeiro") {
+            if (!usuarioBarbeiroId) {
+                try {
+                    const { data: barbeiroId, error } = await supabaseClient.rpc("barbeiro_atual_id");
+                    if (!error) {
+                        usuarioBarbeiroId = barbeiroId;
+                    }
+                } catch {
+                    // se falhar, deixa sem filtro
                 }
-            } catch {
-                // se falhar, deixa sem filtro (mas o correto é ajustar RLS no Supabase)
             }
+
+            filtroBarbeiro = usuarioBarbeiroId;
         }
 
         const queryAgendamentos = supabaseClient
@@ -178,11 +224,12 @@ async function carregarDadosSupabase(carregarDadosPrivados = false) {
             .order("data")
             .order("horario");
 
-        const [agendamentosResposta, diasResposta, horariosResposta, datasBloqueadasResposta] = await Promise.all([
+        const [agendamentosResposta, diasResposta, horariosResposta, datasBloqueadasResposta, barbeirosResposta] = await Promise.all([
             filtroBarbeiro ? queryAgendamentos.eq("barbeiro_id", filtroBarbeiro) : queryAgendamentos,
             supabaseClient.from("dias_disponiveis").select("*").order("dia_semana"),
             supabaseClient.from("horarios_disponiveis").select("*").order("horario"),
-            supabaseClient.from("datas_bloqueadas").select("*").order("data")
+            supabaseClient.from("datas_bloqueadas").select("*").order("data"),
+            supabaseClient.from("barbeiros").select("id, nome").eq("ativo", true).order("nome")
         ]);
 
 
@@ -190,6 +237,7 @@ async function carregarDadosSupabase(carregarDadosPrivados = false) {
         if (diasResposta.error) throw diasResposta.error;
         if (horariosResposta.error) throw horariosResposta.error;
         if (datasBloqueadasResposta.error) throw datasBloqueadasResposta.error;
+        if (barbeirosResposta.error) throw barbeirosResposta.error;
 
         salvarAgendamentos((agendamentosResposta.data || []).map(normalizarAgendamento));
 
@@ -208,6 +256,12 @@ async function carregarDadosSupabase(carregarDadosPrivados = false) {
             })));
         }
 
+        if (barbeirosResposta.data && barbeirosResposta.data.length > 0) {
+            salvarBarbeiros(barbeirosResposta.data);
+        } else {
+            salvarBarbeiros(lerJSON("barbeiros", [{ id: null, nome: "Equipe" }]));
+        }
+
         salvarDatasBloqueadas((datasBloqueadasResposta.data || []).map(item => item.data));
     } catch (erro) {
         console.error("Nao foi possivel carregar dados do Supabase.", erro);
@@ -218,6 +272,7 @@ async function carregarDadosSupabase(carregarDadosPrivados = false) {
             HORARIOS_PADRAO.map(horario => ({ horario, ativo: true }))
         ));
         salvarDatasBloqueadas(lerJSON("datasBloqueadas", []));
+        salvarBarbeiros(lerJSON("barbeiros", [{ id: null, nome: "Equipe" }]));
     }
 }
 
@@ -321,6 +376,25 @@ function dataAtualISO() {
     return `${ano}-${mes}-${dia}`;
 }
 
+function atualizarSaudacao() {
+    if (!adminSaudacao) return;
+
+    let texto = "Bem-vindo ao painel.";
+
+    if (usuarioTipo === "admin") {
+        texto = "Bem-vindo, administrador.";
+    } else if (usuarioTipo === "barbeiro") {
+        const barbeiro = obterBarbeiros().find(item => String(item.id) === String(usuarioBarbeiroId));
+        if (barbeiro?.nome) {
+            texto = `Olá, ${barbeiro.nome}`;
+        } else {
+            texto = "Olá, barbeiro";
+        }
+    }
+
+    adminSaudacao.textContent = texto;
+}
+
 function formatarData(data) {
     if (!data) return "-";
 
@@ -370,67 +444,7 @@ function proximaDataDoDia(diaSemana) {
     return `${ano}-${mes}-${dia}`;
 }
 
-const BARBEIROS_FALLBACK = [
-    { id: "1", nome: "Niel" },
-    { id: "2", nome: "Edvan" },
-];
 
-async function carregarBarbeirosAtivos() {
-    if (!supabaseClient) return BARBEIROS_FALLBACK;
-
-    try {
-        const { data, error } = await supabaseClient
-            .from("barbeiros")
-            .select("id, nome")
-            .eq("ativo", true)
-            .order("nome");
-
-        if (error) throw error;
-
-        return data && data.length ? data.map(b => ({ id: b.id, nome: b.nome })) : [];
-    } catch (erro) {
-        console.error("Erro ao carregar barbeiros.", erro);
-        return BARBEIROS_FALLBACK;
-    }
-}
-
-function renderizarBarbeirosCliente(barbeirosLista) {
-    if (!listaBarbeiros) return;
-
-    const selecionadoId = localStorage.getItem("barbeiro_id");
-    listaBarbeiros.innerHTML = "";
-    avisoBarbeiro.textContent = "";
-
-    if (!barbeirosLista || barbeirosLista.length === 0) {
-        avisoBarbeiro.textContent = "Nenhum barbeiro ativo no momento.";
-        return;
-    }
-
-    barbeirosLista.forEach(barbeiro => {
-        const botao = document.createElement("button");
-        botao.type = "button";
-        botao.className = "card-horario";
-        const estaSelecionado = String(selecionadoId) === String(barbeiro.id);
-        if (estaSelecionado) botao.classList.add("selecionado");
-
-        botao.textContent = barbeiro.nome;
-        botao.addEventListener("click", () => {
-            localStorage.setItem("barbeiro_id", barbeiro.id);
-            localStorage.setItem("barbeiro_nome", barbeiro.nome);
-
-            document.querySelectorAll("#lista-barbeiros .card-horario").forEach(btn => {
-                btn.classList.remove("selecionado");
-            });
-            botao.classList.add("selecionado");
-
-            barbeiros.style.display = "none";
-            dadosCliente.style.display = "block";
-            dadosCliente.scrollIntoView({ behavior: "smooth" });
-        });
-
-        listaBarbeiros.appendChild(botao);
-    });
-}
 
 cardsServico.forEach(card => {
     card.addEventListener("click", () => {
@@ -446,7 +460,9 @@ cardsServico.forEach(card => {
 
         servicos.style.display = "none";
         agendamento.style.display = "block";
+        barbeirosSection.style.display = "block";
         renderizarDiasCliente();
+        renderizarBarbeirosCliente();
         agendamento.scrollIntoView({ behavior: "smooth" });
     });
 });
@@ -457,9 +473,12 @@ function renderizarHorariosCliente() {
     const diasDisponiveis = obterDiasDisponiveis();
     const datasBloqueadas = obterDatasBloqueadas();
     const horariosDisponiveis = obterHorariosDisponiveis().filter(item => item.ativo);
-    const horariosOcupados = obterAgendamentos()
-        .filter(item => item.data === dataSelecionada)
-        .map(item => item.horario);
+    const barbeiroId = localStorage.getItem("barbeiro_id");
+    const horariosOcupados = barbeiroId
+        ? obterAgendamentos()
+            .filter(item => item.data === dataSelecionada && String(item.barbeiro_id) === String(barbeiroId))
+            .map(item => item.horario)
+        : [];
 
     horariosCliente.innerHTML = "";
     avisoData.textContent = "";
@@ -483,6 +502,13 @@ function renderizarHorariosCliente() {
         return;
     }
 
+    if (!barbeiroId) {
+        areaHorarios.style.display = "block";
+        avisoData.textContent = "Selecione um barbeiro para ver a disponibilidade no horario.";
+        horariosCliente.innerHTML = '<p class="mensagem-vazia">Selecione um barbeiro.</p>';
+        return;
+    }
+
     if (horariosDisponiveis.length === 0) {
         areaHorarios.style.display = "none";
         avisoData.textContent = "Nenhum horario disponivel no momento.";
@@ -494,18 +520,13 @@ function renderizarHorariosCliente() {
     ordenarHorarios(horariosDisponiveis).forEach(item => {
         const botao = document.createElement("button");
         const horarioOcupado = horariosOcupados.includes(item.horario);
-        const barbeiroId = localStorage.getItem("barbeiro_id");
-        const barbeiroOcupado = Boolean(barbeiroId) && obterAgendamentos()
-            .some(a => a.data === dataSelecionada && a.horario === item.horario && String(a.barbeiro_id) === String(barbeiroId));
 
         botao.type = "button";
         botao.className = "card-horario";
-        const ocupado = horarioOcupado || barbeiroOcupado;
+        botao.textContent = horarioOcupado ? `${item.horario} ocupado` : item.horario;
+        botao.disabled = horarioOcupado;
 
-        botao.textContent = ocupado ? `${item.horario} ocupado` : item.horario;
-        botao.disabled = ocupado;
-
-        if (ocupado) {
+        if (horarioOcupado) {
             botao.classList.add("indisponivel");
         }
 
@@ -522,13 +543,10 @@ function renderizarHorariosCliente() {
 
                 dadosCliente.style.display = "none";
 
-                barbeiros.style.display = "block";
-                barbeiros.scrollIntoView({ behavior: "smooth" });
+                areaHorarios.style.display = "none";
+                dadosCliente.style.display = "block";
+                dadosCliente.scrollIntoView({ behavior: "smooth" });
 
-                localStorage.removeItem("barbeiro_id");
-                localStorage.removeItem("barbeiro_nome");
-
-                carregarBarbeirosAtivos().then(renderizarBarbeirosCliente);
             });
 
 
@@ -566,15 +584,16 @@ function renderizarDiasCliente() {
             <span>${formatarData(dataDia)}</span>
         `;
 
-        botao.addEventListener("click", () => {
-            if (!disponivel) return;
+            botao.addEventListener("click", () => {
+                if (!disponivel) return;
 
-            localStorage.setItem("data", dataDia);
-            localStorage.removeItem("horario");
-            dadosCliente.style.display = "none";
-            renderizarDiasCliente();
-            renderizarHorariosCliente();
-        });
+                localStorage.setItem("data", dataDia);
+                localStorage.removeItem("horario");
+                dadosCliente.style.display = "none";
+                areaHorarios.style.display = "block";
+                renderizarDiasCliente();
+                renderizarHorariosCliente();
+            });
 
         diasCliente.appendChild(botao);
     });
@@ -588,23 +607,21 @@ formAgendamento.addEventListener("submit", async (e) => {
         preco: localStorage.getItem("preco"),
         data: localStorage.getItem("data"),
         horario: localStorage.getItem("horario"),
-        barbeiro_id: localStorage.getItem("barbeiro_id"),
-        barbeiro_nome: localStorage.getItem("barbeiro_nome"),
         nome: document.getElementById("nome").value.trim(),
-        whatsapp: document.getElementById("whatsapp").value.trim()
+        whatsapp: document.getElementById("whatsapp").value.trim(),
+        barbeiro_id: localStorage.getItem("barbeiro_id"),
+        barbeiro_nome: localStorage.getItem("barbeiro_nome")
     };
-
 
     if (!agendamentoCliente.data || !agendamentoCliente.horario) {
         alert("Escolha um dia e um horario antes de confirmar.");
         return;
     }
 
-    if (!agendamentoCliente.barbeiro_id || !agendamentoCliente.barbeiro_nome) {
+    if (!agendamentoCliente.barbeiro_nome) {
         alert("Escolha um barbeiro antes de confirmar.");
         return;
     }
-
 
     try {
         await criarAgendamentoSupabase(agendamentoCliente);
@@ -617,9 +634,14 @@ formAgendamento.addEventListener("submit", async (e) => {
     alert("Agendamento confirmado com sucesso!");
 
     formAgendamento.reset();
+    localStorage.removeItem("servico");
+    localStorage.removeItem("preco");
     localStorage.removeItem("data");
     localStorage.removeItem("horario");
+    localStorage.removeItem("barbeiro_id");
+    localStorage.removeItem("barbeiro_nome");
     areaHorarios.style.display = "none";
+    barbeirosSection.style.display = "none";
     dadosCliente.style.display = "none";
     servicos.style.display = "block";
     agendamento.style.display = "none";
@@ -643,11 +665,13 @@ async function verificarAcessoAdministrador() {
         const { data: usuarioData } = await supabaseClient.auth.getUser();
         if (!usuarioData?.user) return false;
 
-        const { data: ehAdm, error: errAdm } = await supabaseClient
-            .rpc("eh_admin");
+        const [admResponse, barbeiroResponse] = await Promise.all([
+            supabaseClient.rpc("eh_admin"),
+            supabaseClient.rpc("eh_barbeiro")
+        ]);
 
-        if (errAdm) return false;
-        return Boolean(ehAdm);
+        if (admResponse.error || barbeiroResponse.error) return false;
+        return Boolean(admResponse.data && !barbeiroResponse.data);
     } catch {
         return false;
     }
@@ -674,28 +698,43 @@ formLogin.addEventListener("submit", async (e) => {
         return;
     }
 
-    const { data: usuarioAdmin, error: erroAdmin } = await supabaseClient.rpc("eh_admin");
+    const [admResponse, barbeiroResponse] = await Promise.all([
+        supabaseClient.rpc("eh_admin"),
+        supabaseClient.rpc("eh_barbeiro")
+    ]);
 
-    if (erroAdmin || !usuarioAdmin) {
+    if (admResponse.error || barbeiroResponse.error) {
         await supabaseClient.auth.signOut();
-        erroLogin.textContent = "Este usuario nao tem permissao de administrador.";
+        erroLogin.textContent = "Nao foi possivel verificar o tipo de usuario. Tente novamente.";
         return;
+    }
+
+    if (admResponse.data) {
+        usuarioTipo = "admin";
+    } else if (barbeiroResponse.data) {
+        usuarioTipo = "barbeiro";
+    } else {
+        await supabaseClient.auth.signOut();
+        erroLogin.textContent = "Acesso restrito: apenas administradores ou barbeiros podem acessar este painel.";
+        return;
+    }
+
+    if (usuarioTipo === "barbeiro") {
+        const { data: barbeiroId, error: barbeiroIdError } = await supabaseClient.rpc("barbeiro_atual_id");
+        if (barbeiroIdError || !barbeiroId) {
+            await supabaseClient.auth.signOut();
+            erroLogin.textContent = "Nao foi possivel identificar o barbeiro. Contate o suporte.";
+            return;
+        }
+        usuarioBarbeiroId = barbeiroId;
     }
 
     areaLogin.style.display = "none";
     areaAdmin.style.display = "block";
 
-    // Se não for admin, bloqueia acesso ao painel administrativo.
-    const temAcessoAdmin = await verificarAcessoAdministrador();
-    if (!temAcessoAdmin) {
-        areaAdmin.style.display = "none";
-        areaLogin.style.display = "block";
-        erroLogin.textContent = "Acesso restrito: apenas administradores.";
-        return;
-    }
-
     await carregarDadosSupabase(true);
     carregarPainelAdmin();
+    atualizarSaudacao();
 
 });
 

@@ -272,6 +272,27 @@ header {
     justify-content: center;
 }
 
+.card-barbeiro {
+    min-width: 140px;
+    padding: 16px;
+    border-radius: 8px;
+    border: 2px solid #333;
+    background: #242424;
+    color: white;
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.card-barbeiro:hover {
+    border-color: #d4af37;
+    transform: translateY(-3px);
+}
+
+.card-barbeiro.selecionado {
+    background: #d4af37;
+    color: #121212;
+    border-color: #d4af37;
+}
 
 .horarios {
     display: flex;
