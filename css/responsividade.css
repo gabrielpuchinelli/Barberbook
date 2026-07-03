@@ -126,7 +126,13 @@
     .form-horario button,
     .form-data-bloqueada button,
     .input-mes-faturamento {
-        width: 100%;
+        width: min(100%, 220px);
+        min-width: 0;
+        max-width: 220px;
+    }
+
+    .input-mes-faturamento {
+        margin-top: 12px;
     }
 
     .proximo-atendimento-item {
