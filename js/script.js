@@ -220,7 +220,7 @@ async function carregarDadosSupabase(carregarDadosPrivados = false) {
 
         const queryAgendamentos = supabaseClient
             .from(tabelaAgendamentos)
-            .select("*")
+            .select("id, data, horario, barbeiro_id, barbeiro_nome, servico, preco")
             .order("data")
             .order("horario");
 
