@@ -19,7 +19,7 @@ A disponibilidade e o comportamento de algumas funções dependem da estrutura e
 
 ## Tecnologias atuais
 
-HTML5, CSS3, JavaScript e Supabase (Auth e PostgreSQL). O frontend usa também `localStorage` para cache/fallback em partes do fluxo; o banco deve ser a fonte de autoridade para agendamentos e permissões.
+HTML5, CSS3, JavaScript e Supabase (Auth e PostgreSQL). O fluxo de reserva mantém a seleção em memória. O banco é a fonte de autoridade para agendamentos e permissões.
 
 ## Estrutura
 
@@ -35,11 +35,15 @@ js/
   agendamento.js
   admin.js
 supabase-schema.sql
+supabase/
+  migrations/
+  configuracao/
 AGENTS.md
 docs/
   ARCHITECTURE.md
   ROADMAP.md
   DESIGN_SYSTEM.md
+  SUPABASE.md
 ```
 
 ## Executar localmente
@@ -51,9 +55,9 @@ docs/
 
 **Importante:** a chave pública anon/publishable do Supabase não concede segurança por si só. É obrigatório validar RLS, grants, views e RPCs. Nunca inclua uma chave `service_role` ou credenciais privadas no frontend. Não há usuário/senha administrativo padrão garantido: os usuários devem ser provisionados pelo Supabase Auth conforme as permissões efetivas do banco.
 
-## Atenção ao schema
+## Schema do banco
 
-`supabase-schema.sql` é um artefato parcial/desatualizado em relação ao frontend. Não execute esse arquivo sobre um banco existente sem comparar previamente com o schema real, realizar backup e aprovar uma migração. Veja `docs/ARCHITECTURE.md`.
+As migrações em `supabase/migrations/` permitem recriar a estrutura para uma implantação vazia. O arquivo `supabase-schema.sql` é o ponto de entrada pelo `psql`. A configuração de uma barbearia e os dados fictícios de teste ficam em arquivos separados. Consulte [o guia de instalação e testes](docs/SUPABASE.md) para requisitos e pendências da integração.
 
 ## Desenvolvimento com Codex
 

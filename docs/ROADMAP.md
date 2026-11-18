@@ -14,7 +14,7 @@
 - [x] Documentar instruções, arquitetura, roadmap e design system.
 - [ ] Inventariar todas as regras e eventos de `js/script.js`.
 - [x] Separar a ocupação pública dos registros privados no frontend e remover o cache legado de agendamentos do navegador.
-- [ ] Obter schema real do Supabase e comparar com `supabase-schema.sql`.
+- [x] Inventariar contratos do frontend após a exclusão do Supabase anterior.
 - [ ] Auditar RLS, grants, view pública, RPCs e tratamento de dados pessoais.
 - [ ] Definir plano de testes e critérios de aceite para agendamentos.
 - [ ] Validar visualmente as telas em desktop e dispositivos móveis.
@@ -37,10 +37,22 @@
 - [ ] Verificar permissões e concorrência com contas de administrador e barbeiro em um projeto Supabase de teste.
 
 ## Fase 4 — Preparação comercial
+- [x] Reconstruir o schema em migrações versionadas e separar a configuração inicial dos dados fictícios.
+- [x] Exercitar permissões, integridade e concorrência em PostgreSQL local descartável.
+- [x] Validar instalação, Auth, RPCs, permissões e concorrência pela Data API no stack Supabase local.
 - [ ] Parametrizar nome, logo, contato, serviços, preços e horários por instalação.
 - [ ] Padronizar configuração segura do Supabase e provisionamento.
 - [ ] Documentar instalação, backup, atualização e suporte.
 - [ ] Executar testes de regressão e checklist de segurança.
+
+### Pendências de integração
+
+- [ ] Tratar exclusões e edições que afetam zero linhas e atualizar a interface somente após confirmação da operação.
+- [ ] Alinhar a exibição de datas e horários ao fuso da barbearia quando ele difere do fuso do navegador.
+- [ ] Paginar as consultas da Data API para ocupação pública e histórico administrativo.
+- [ ] Definir e testar proteção contra abuso de reservas públicas.
+- [ ] Validar a interface de agendamento e painel de ponta a ponta no navegador com um stack Supabase real de teste.
+- [ ] Definir e validar as regras de conflito para serviços com durações sobrepostas.
 
 ## Fase 5 — Evolução opcional
 - [ ] Avaliar React + TypeScript, conforme benefício e aprovação.
@@ -48,4 +60,4 @@
 - [ ] Melhorar observabilidade e procedimentos de manutenção.
 
 ## Próxima tarefa para o Codex
-Obter o inventário do Supabase implantado, confirmar o contrato da view pública e validar as permissões e os fluxos críticos em ambiente de teste. A modernização das etapas do agendamento e das seções do painel segue nos próximos incrementos.
+Após a revisão do schema, priorizar as pendências de integração e validar a interface completa no navegador com dados fictícios.
