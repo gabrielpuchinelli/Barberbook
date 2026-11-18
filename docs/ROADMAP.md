@@ -13,6 +13,7 @@
 - [x] Aplicar camada inicial de estilo e atualizar apresentação em `index.html`.
 - [x] Documentar instruções, arquitetura, roadmap e design system.
 - [ ] Inventariar todas as regras e eventos de `js/script.js`.
+- [x] Separar a ocupação pública dos registros privados no frontend e remover o cache legado de agendamentos do navegador.
 - [ ] Obter schema real do Supabase e comparar com `supabase-schema.sql`.
 - [ ] Auditar RLS, grants, view pública, RPCs e tratamento de dados pessoais.
 - [ ] Definir plano de testes e critérios de aceite para agendamentos.
@@ -43,4 +44,4 @@
 - [ ] Melhorar observabilidade e procedimentos de manutenção.
 
 ## Próxima tarefa para o Codex
-Inspecionar o fluxo atual e entregar **diagnóstico e plano de refatoração**, sem modificar arquivos ou banco até a aprovação do proprietário.
+Obter o inventário do Supabase implantado, confirmar o contrato da view pública e validar as permissões e os fluxos críticos em ambiente de teste. A modernização das etapas do agendamento e das seções do painel segue nos próximos incrementos.

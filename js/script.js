@@ -2,6 +2,7 @@ const cardsServico = document.querySelectorAll(".card-servico");
 const servicos = document.getElementById("servicos");
 const agendamento = document.getElementById("agendamento");
 const avisoData = document.getElementById("aviso-data");
+const btnRecarregarDisponibilidade = document.getElementById("btn-recarregar-disponibilidade");
 const diasCliente = document.getElementById("dias-cliente");
 const areaHorarios = document.getElementById("area-horarios");
 const horariosCliente = document.getElementById("horarios-cliente");
@@ -54,23 +55,6 @@ const editarData = document.getElementById("editar-data");
 const editarHorario = document.getElementById("editar-horario");
 const btnCancelarEdicao = document.getElementById("btn-cancelar-edicao");
 
-const HORARIOS_PADRAO = [
-    "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-    "13:00", "13:30", "14:00", "14:30", "15:00", "15:30",
-    "16:00", "16:30", "17:00", "17:30", "18:00", "18:30",
-    "19:00"
-];
-
-const DIAS_PADRAO = {
-    0: false,
-    1: true,
-    2: true,
-    3: true,
-    4: true,
-    5: true,
-    6: true
-};
-
 const NOMES_DIAS = {
     0: "Domingo",
     1: "Segunda",
@@ -81,81 +65,31 @@ const NOMES_DIAS = {
     6: "Sabado"
 };
 
-let agendamentosCache = [];
-let diasDisponiveisCache = { ...DIAS_PADRAO };
-let horariosDisponiveisCache = HORARIOS_PADRAO.map(horario => ({ horario, ativo: true }));
+let disponibilidadePublica = null;
+let estadoDisponibilidade = "carregando";
+let consultaDisponibilidade = 0;
+let horarioSelecionado = null;
+let agendamentosPrivados = [];
+let diasDisponiveisCache = {};
+let horariosDisponiveisCache = [];
 let datasBloqueadasCache = [];
 let barbeirosCache = [];
-let usuarioTipo = null;
-let usuarioBarbeiroId = null;
+let sessaoAuth = null;
+let tentativaLogin = null;
+let sessaoPainel = null;
+let encerrandoSessao = false;
 
-function lerJSON(chave, fallback) {
-    const dados = localStorage.getItem(chave);
-
-    if (!dados) return fallback;
-
-    try {
-        return JSON.parse(dados);
-    } catch {
-        return fallback;
-    }
-}
-
-function salvarJSON(chave, valor) {
-    localStorage.setItem(chave, JSON.stringify(valor));
-}
-
-function obterAgendamentos() {
-    return agendamentosCache;
-}
-
-function salvarAgendamentos(agendamentos) {
-    agendamentosCache = agendamentos;
-    salvarJSON("agendamentos", agendamentos);
-}
-
-function obterDiasDisponiveis() {
-    return diasDisponiveisCache;
-}
-
-function salvarDiasDisponiveis(dias) {
-    diasDisponiveisCache = dias;
-    salvarJSON("diasDisponiveis", dias);
-}
-
-function obterHorariosDisponiveis() {
-    return horariosDisponiveisCache;
-}
-
-function salvarHorariosDisponiveis(horarios) {
-    horariosDisponiveisCache = horarios;
-    salvarJSON("horariosDisponiveis", horarios);
-}
-
-function obterDatasBloqueadas() {
-    return datasBloqueadasCache;
-}
-
-function salvarDatasBloqueadas(datas) {
-    datasBloqueadasCache = datas;
-    salvarJSON("datasBloqueadas", datas);
-}
-
-function obterBarbeiros() {
-    return barbeirosCache;
-}
-
-function salvarBarbeiros(barbeiros) {
-    barbeirosCache = barbeiros;
-    salvarJSON("barbeiros", barbeiros);
-}
+localStorage.removeItem("agendamentos");
+localStorage.removeItem("barbeiro_nome");
+localStorage.removeItem("horario");
 
 function renderizarBarbeirosCliente() {
     const barbeiroSelecionado = localStorage.getItem("barbeiro_id");
-    const barbeiros = obterBarbeiros();
+    const barbeiros = disponibilidadePublica?.barbeiros;
 
-    listaBarbeiros.innerHTML = "";
+    listaBarbeiros.replaceChildren();
 
+    if (!barbeiros) return;
     if (barbeiros.length === 0) {
         listaBarbeiros.innerHTML = '<p class="mensagem-vazia">Nenhum barbeiro disponivel no momento.</p>';
         return;
@@ -172,8 +106,10 @@ function renderizarBarbeirosCliente() {
         }
 
         botao.addEventListener("click", () => {
-            localStorage.setItem("barbeiro_id", item.id || "");
-            localStorage.setItem("barbeiro_nome", item.nome);
+            if (localStorage.getItem("barbeiro_id") !== String(item.id)) {
+                invalidarHorarioSelecionado();
+            }
+            localStorage.setItem("barbeiro_id", item.id);
             renderizarBarbeirosCliente();
             renderizarHorariosCliente();
         });
@@ -198,82 +134,89 @@ function mensagemErroSupabase(erro) {
     ].filter(Boolean).join("\n");
 }
 
-async function carregarDadosSupabase(carregarDadosPrivados = false) {
-    try {
-        const tabelaAgendamentos = carregarDadosPrivados ? "agendamentos" : "agendamentos_publicos";
+function idBarbeiroValido(id) {
+    if (typeof id === "number") return Number.isSafeInteger(id) && id > 0;
+    return typeof id === "string" && (
+        /^[1-9]\d*$/.test(id) ||
+        /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)
+    );
+}
 
-        let filtroBarbeiro = null;
-        if (carregarDadosPrivados && usuarioTipo === "barbeiro") {
-            if (!usuarioBarbeiroId) {
-                try {
-                    const { data: barbeiroId, error } = await supabaseClient.rpc("barbeiro_atual_id");
-                    if (!error) {
-                        usuarioBarbeiroId = barbeiroId;
-                    }
-                } catch {
-                    // se falhar, deixa sem filtro
-                }
-            }
+async function consultarConfiguracaoAgenda() {
+    const [dias, horarios, bloqueios, barbeiros] = await Promise.all([
+        supabaseClient.from("dias_disponiveis").select("dia_semana, ativo").order("dia_semana"),
+        supabaseClient.from("horarios_disponiveis").select("horario, ativo").order("horario"),
+        supabaseClient.from("datas_bloqueadas").select("data").order("data"),
+        supabaseClient.from("barbeiros").select("id, nome").eq("ativo", true).order("nome")
+    ]);
 
-            filtroBarbeiro = usuarioBarbeiroId;
-        }
-
-        const queryAgendamentos = supabaseClient
-            .from(tabelaAgendamentos)
-            .select("id, nome, whatsapp, data, horario, barbeiro_id, barbeiro_nome, servico, preco")
-            .order("data")
-            .order("horario");
-
-        const [agendamentosResposta, diasResposta, horariosResposta, datasBloqueadasResposta, barbeirosResposta] = await Promise.all([
-            filtroBarbeiro ? queryAgendamentos.eq("barbeiro_id", filtroBarbeiro) : queryAgendamentos,
-            supabaseClient.from("dias_disponiveis").select("*").order("dia_semana"),
-            supabaseClient.from("horarios_disponiveis").select("*").order("horario"),
-            supabaseClient.from("datas_bloqueadas").select("*").order("data"),
-            supabaseClient.from("barbeiros").select("id, nome").eq("ativo", true).order("nome")
-        ]);
-
-
-        if (agendamentosResposta.error) throw agendamentosResposta.error;
-        if (diasResposta.error) throw diasResposta.error;
-        if (horariosResposta.error) throw horariosResposta.error;
-        if (datasBloqueadasResposta.error) throw datasBloqueadasResposta.error;
-        if (barbeirosResposta.error) throw barbeirosResposta.error;
-
-        salvarAgendamentos((agendamentosResposta.data || []).map(normalizarAgendamento));
-
-        if (diasResposta.data && diasResposta.data.length > 0) {
-            const dias = { ...DIAS_PADRAO };
-            diasResposta.data.forEach(item => {
-                dias[item.dia_semana] = item.ativo;
-            });
-            salvarDiasDisponiveis(dias);
-        }
-
-        if (horariosResposta.data && horariosResposta.data.length > 0) {
-            salvarHorariosDisponiveis(horariosResposta.data.map(item => ({
-                horario: item.horario.slice(0, 5),
-                ativo: item.ativo
-            })));
-        }
-
-        if (barbeirosResposta.data && barbeirosResposta.data.length > 0) {
-            salvarBarbeiros(barbeirosResposta.data);
-        } else {
-            salvarBarbeiros(lerJSON("barbeiros", [{ id: null, nome: "Equipe" }]));
-        }
-
-        salvarDatasBloqueadas((datasBloqueadasResposta.data || []).map(item => item.data));
-    } catch (erro) {
-        console.error("Nao foi possivel carregar dados do Supabase.", erro);
-        salvarAgendamentos(lerJSON("agendamentos", []));
-        salvarDiasDisponiveis(lerJSON("diasDisponiveis", DIAS_PADRAO));
-        salvarHorariosDisponiveis(lerJSON(
-            "horariosDisponiveis",
-            HORARIOS_PADRAO.map(horario => ({ horario, ativo: true }))
-        ));
-        salvarDatasBloqueadas(lerJSON("datasBloqueadas", []));
-        salvarBarbeiros(lerJSON("barbeiros", [{ id: null, nome: "Equipe" }]));
+    for (const resposta of [dias, horarios, bloqueios, barbeiros]) {
+        if (resposta.error) throw resposta.error;
     }
+
+    return {
+        dias: Object.fromEntries(dias.data.map(item => [item.dia_semana, item.ativo])),
+        horarios: horarios.data.map(item => ({
+            horario: item.horario.slice(0, 5),
+            ativo: item.ativo
+        })),
+        datasBloqueadas: bloqueios.data.map(item => item.data),
+        barbeiros: barbeiros.data.filter(item => idBarbeiroValido(item.id))
+    };
+}
+
+async function carregarDisponibilidadePublica() {
+    const consulta = ++consultaDisponibilidade;
+    invalidarHorarioSelecionado();
+    disponibilidadePublica = null;
+    estadoDisponibilidade = "carregando";
+    renderizarDisponibilidadeCliente();
+
+    try {
+        const [resposta, configuracao] = await Promise.all([
+            supabaseClient.from("agendamentos_publicos")
+                .select("data, horario, barbeiro_id")
+                .order("data")
+                .order("horario"),
+            consultarConfiguracaoAgenda()
+        ]);
+        if (consulta !== consultaDisponibilidade) return;
+        if (resposta.error) throw resposta.error;
+
+        disponibilidadePublica = {
+            ...configuracao,
+            ocupacoes: resposta.data.map(({ data, horario, barbeiro_id }) => ({
+                data,
+                horario: horario.slice(0, 5),
+                barbeiro_id
+            }))
+        };
+        estadoDisponibilidade = "disponivel";
+    } catch {
+        if (consulta !== consultaDisponibilidade) return;
+        estadoDisponibilidade = "erro";
+    }
+
+    renderizarDisponibilidadeCliente();
+}
+
+async function consultarDadosPainel(sessao) {
+    if (sessao.tipo !== "admin" && (
+        sessao.tipo !== "barbeiro" || !idBarbeiroValido(sessao.barbeiroId)
+    )) return null;
+
+    const consulta = supabaseClient.from("agendamentos")
+        .select("id, nome, whatsapp, data, horario, barbeiro_id, barbeiro_nome, servico, preco")
+        .order("data")
+        .order("horario");
+
+    const [resposta, configuracao] = await Promise.all([
+        sessao.tipo === "barbeiro" ? consulta.eq("barbeiro_id", sessao.barbeiroId) : consulta,
+        consultarConfiguracaoAgenda()
+    ]);
+    if (resposta.error) throw resposta.error;
+
+    return { agendamentos: resposta.data.map(normalizarAgendamento), configuracao };
 }
 
 async function criarAgendamentoSupabase(agendamentoCliente) {
@@ -282,89 +225,104 @@ async function criarAgendamentoSupabase(agendamentoCliente) {
         .insert([agendamentoCliente]);
 
     if (error) throw error;
-
-    salvarAgendamentos([...obterAgendamentos(), normalizarAgendamento(agendamentoCliente)]);
 }
 
-async function atualizarAgendamentoSupabase(id, agendamentoAtualizado) {
-    const { data, error } = await supabaseClient
+async function executarEscritaPainel(sessao, consultar) {
+    if (!sessaoPainelAtiva(sessao)) return false;
+
+    const valida = await confirmarSessaoAuth(sessao.auth);
+    if (!sessaoPainelAtiva(sessao)) return false;
+    if (!valida) {
+        pedirNovoLogin();
+        return false;
+    }
+
+    let resposta;
+    try {
+        resposta = await consultar().abortSignal(sessao.controlador.signal);
+    } catch (erro) {
+        if (!sessaoPainelAtiva(sessao)) return false;
+        throw erro;
+    }
+    if (!sessaoPainelAtiva(sessao)) return false;
+    if (resposta.error) throw resposta.error;
+    return resposta;
+}
+
+async function atualizarAgendamentoSupabase(sessao, id, agendamentoAtualizado) {
+    const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("agendamentos")
         .update(agendamentoAtualizado)
         .eq("id", id)
         .select()
-        .single();
+        .single());
 
-    if (error) throw error;
-
-    salvarAgendamentos(obterAgendamentos().map(item => {
-        return item.id === id ? normalizarAgendamento(data) : item;
-    }));
+    if (!resposta || !sessaoPainelAtiva(sessao)) return false;
+    agendamentosPrivados = agendamentosPrivados.map(item => {
+        return item.id === id ? normalizarAgendamento(resposta.data) : item;
+    });
+    return true;
 }
 
-async function excluirAgendamentoSupabase(id) {
-    const { error } = await supabaseClient
+async function excluirAgendamentoSupabase(sessao, id) {
+    const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("agendamentos")
         .delete()
-        .eq("id", id);
+        .eq("id", id));
 
-    if (error) throw error;
-
-    salvarAgendamentos(obterAgendamentos().filter(item => item.id !== id));
+    if (!resposta || !sessaoPainelAtiva(sessao)) return false;
+    agendamentosPrivados = agendamentosPrivados.filter(item => item.id !== id);
+    return true;
 }
 
-async function salvarDiasDisponiveisSupabase(dias) {
-    salvarDiasDisponiveis(dias);
-
-    const registros = Object.entries(dias).map(([dia_semana, ativo]) => ({
-        dia_semana: Number(dia_semana),
-        ativo
-    }));
-
-    const { error } = await supabaseClient
+async function salvarDiaDisponivelSupabase(sessao, diaSemana, ativo) {
+    const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("dias_disponiveis")
-        .upsert(registros, { onConflict: "dia_semana" });
+        .upsert([{ dia_semana: Number(diaSemana), ativo }], { onConflict: "dia_semana" }));
 
-    if (error) throw error;
+    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    diasDisponiveisCache[diaSemana] = ativo;
 }
 
-async function salvarHorariosDisponiveisSupabase(horarios) {
-    salvarHorariosDisponiveis(ordenarHorarios(horarios));
-
-    const { error } = await supabaseClient
+async function salvarHorarioDisponivelSupabase(sessao, horario, ativo) {
+    const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("horarios_disponiveis")
-        .upsert(horarios, { onConflict: "horario" });
+        .upsert([{ horario, ativo }], { onConflict: "horario" }));
 
-    if (error) throw error;
+    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    horariosDisponiveisCache = [
+        ...horariosDisponiveisCache.filter(item => item.horario !== horario),
+        { horario, ativo }
+    ];
 }
 
-async function removerHorarioSupabase(horario) {
-    const { error } = await supabaseClient
+async function removerHorarioSupabase(sessao, horario) {
+    const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("horarios_disponiveis")
         .delete()
-        .eq("horario", horario);
+        .eq("horario", horario));
 
-    if (error) throw error;
+    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    horariosDisponiveisCache = horariosDisponiveisCache.filter(item => item.horario !== horario);
 }
 
-async function salvarDataBloqueadaSupabase(data) {
-    const { error } = await supabaseClient
+async function salvarDataBloqueadaSupabase(sessao, data) {
+    const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("datas_bloqueadas")
-        .insert([{ data }]);
+        .insert([{ data }]));
 
-    if (error) throw error;
-
-    salvarDatasBloqueadas([...obterDatasBloqueadas(), data].sort());
+    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    datasBloqueadasCache = [...datasBloqueadasCache, data].sort();
 }
 
-async function removerDataBloqueadaSupabase(data) {
-    const { error } = await supabaseClient
+async function removerDataBloqueadaSupabase(sessao, data) {
+    const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("datas_bloqueadas")
         .delete()
-        .eq("data", data);
+        .eq("data", data));
 
-    if (error) throw error;
-
-    salvarDatasBloqueadas(obterDatasBloqueadas().filter(item => item !== data));
+    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    datasBloqueadasCache = datasBloqueadasCache.filter(item => item !== data);
 }
 
 function dataAtualISO() {
@@ -381,10 +339,10 @@ function atualizarSaudacao() {
 
     let texto = "Bem-vindo ao painel.";
 
-    if (usuarioTipo === "admin") {
+    if (sessaoPainel?.tipo === "admin") {
         texto = "Bem-vindo, administrador.";
-    } else if (usuarioTipo === "barbeiro") {
-        const barbeiro = obterBarbeiros().find(item => String(item.id) === String(usuarioBarbeiroId));
+    } else if (sessaoPainel?.tipo === "barbeiro") {
+        const barbeiro = barbeirosCache.find(item => String(item.id) === String(sessaoPainel.barbeiroId));
         if (barbeiro?.nome) {
             texto = `Olá, ${barbeiro.nome}`;
         } else {
@@ -454,6 +412,7 @@ cardsServico.forEach(card => {
 
         localStorage.setItem("servico", servicoEscolhido);
         localStorage.setItem("preco", precoEscolhido);
+        invalidarHorarioSelecionado();
 
         cardsServico.forEach(item => item.classList.remove("selecionado"));
         card.classList.add("selecionado");
@@ -468,26 +427,26 @@ cardsServico.forEach(card => {
 });
 
 function renderizarHorariosCliente() {
-    const dataSelecionada = localStorage.getItem("data");
-
-    const diasDisponiveis = obterDiasDisponiveis();
-    const datasBloqueadas = obterDatasBloqueadas();
-    const horariosDisponiveis = obterHorariosDisponiveis().filter(item => item.ativo);
-    const barbeiroId = localStorage.getItem("barbeiro_id");
-    const horariosOcupados = barbeiroId
-        ? obterAgendamentos()
-            .filter(item => item.data === dataSelecionada && String(item.barbeiro_id) === String(barbeiroId))
-            .map(item => item.horario)
-        : [];
-
     horariosCliente.innerHTML = "";
     avisoData.textContent = "";
+    btnRecarregarDisponibilidade.hidden = estadoDisponibilidade !== "erro";
 
+    if (!disponibilidadePublica) {
+        areaHorarios.style.display = "none";
+        dadosCliente.style.display = "none";
+        avisoData.textContent = estadoDisponibilidade === "erro"
+            ? "Não foi possível verificar a disponibilidade. Tente novamente."
+            : "Carregando disponibilidade...";
+        return;
+    }
+
+    const dataSelecionada = localStorage.getItem("data");
     if (!dataSelecionada) {
         areaHorarios.style.display = "none";
         return;
     }
 
+    const { dias: diasDisponiveis, datasBloqueadas, horarios } = disponibilidadePublica;
     const diaSemana = new Date(`${dataSelecionada}T12:00:00`).getDay();
 
     if (!diasDisponiveis[diaSemana]) {
@@ -502,13 +461,15 @@ function renderizarHorariosCliente() {
         return;
     }
 
-    if (!barbeiroId) {
+    const barbeiro = barbeiroSelecionado();
+    if (!barbeiro) {
         areaHorarios.style.display = "block";
         avisoData.textContent = "Selecione um barbeiro para ver a disponibilidade no horario.";
         horariosCliente.innerHTML = '<p class="mensagem-vazia">Selecione um barbeiro.</p>';
         return;
     }
 
+    const horariosDisponiveis = horarios.filter(item => item.ativo);
     if (horariosDisponiveis.length === 0) {
         areaHorarios.style.display = "none";
         avisoData.textContent = "Nenhum horario disponivel no momento.";
@@ -516,6 +477,7 @@ function renderizarHorariosCliente() {
     }
 
     areaHorarios.style.display = "block";
+    const horariosOcupados = obterHorariosOcupados(dataSelecionada, barbeiro.id);
 
     ordenarHorarios(horariosDisponiveis).forEach(item => {
         const botao = document.createElement("button");
@@ -539,9 +501,7 @@ function renderizarHorariosCliente() {
                 });
 
                 botao.classList.add("selecionado");
-                localStorage.setItem("horario", item.horario);
-
-                dadosCliente.style.display = "none";
+                horarioSelecionado = { data: dataSelecionada, barbeiroId: barbeiro.id, horario: item.horario };
 
                 areaHorarios.style.display = "none";
                 dadosCliente.style.display = "block";
@@ -555,11 +515,11 @@ function renderizarHorariosCliente() {
 }
 
 function renderizarDiasCliente() {
-    const diasDisponiveis = obterDiasDisponiveis();
-    const datasBloqueadas = obterDatasBloqueadas();
-    const ordemDias = [1, 2, 3, 4, 5, 6, 0];
-
     diasCliente.innerHTML = "";
+    if (!disponibilidadePublica) return;
+
+    const { dias: diasDisponiveis, datasBloqueadas } = disponibilidadePublica;
+    const ordemDias = [1, 2, 3, 4, 5, 6, 0];
 
     ordemDias.forEach(dia => {
         const botao = document.createElement("button");
@@ -579,17 +539,18 @@ function renderizarDiasCliente() {
             botao.classList.add("indisponivel");
         }
 
-        botao.innerHTML = `
-            <strong>${NOMES_DIAS[dia]}</strong>
-            <span>${formatarData(dataDia)}</span>
-        `;
+        const nomeDia = document.createElement("strong");
+        const dataFormatada = document.createElement("span");
+        nomeDia.textContent = NOMES_DIAS[dia];
+        dataFormatada.textContent = formatarData(dataDia);
+        botao.appendChild(nomeDia);
+        botao.appendChild(dataFormatada);
 
             botao.addEventListener("click", () => {
                 if (!disponivel) return;
 
                 localStorage.setItem("data", dataDia);
-                localStorage.removeItem("horario");
-                dadosCliente.style.display = "none";
+                invalidarHorarioSelecionado();
                 areaHorarios.style.display = "block";
                 renderizarDiasCliente();
                 renderizarHorariosCliente();
@@ -599,36 +560,84 @@ function renderizarDiasCliente() {
     });
 }
 
+function barbeiroSelecionado() {
+    const id = localStorage.getItem("barbeiro_id");
+    return disponibilidadePublica?.barbeiros.find(item => String(item.id) === id);
+}
+
+function invalidarHorarioSelecionado() {
+    horarioSelecionado = null;
+    dadosCliente.style.display = "none";
+}
+
+function obterHorariosOcupados(data, barbeiroId) {
+    return disponibilidadePublica.ocupacoes
+        .filter(item => item.data === data && String(item.barbeiro_id) === String(barbeiroId))
+        .map(item => item.horario);
+}
+
+function renderizarDisponibilidadeCliente() {
+    renderizarDiasCliente();
+    renderizarBarbeirosCliente();
+    renderizarHorariosCliente();
+}
+
+btnRecarregarDisponibilidade.addEventListener("click", carregarDisponibilidadePublica);
+
 formAgendamento.addEventListener("submit", async (e) => {
     e.preventDefault();
+
+    const disponibilidade = disponibilidadePublica;
+    if (!disponibilidade) return;
+
+    const barbeiro = barbeiroSelecionado();
+    const dataSelecionada = localStorage.getItem("data");
+    if (!barbeiro || !horarioSelecionado || horarioSelecionado.data !== dataSelecionada ||
+        horarioSelecionado.barbeiroId !== barbeiro.id) {
+        alert("Escolha um dia, um profissional e um horário antes de confirmar.");
+        return;
+    }
 
     const agendamentoCliente = {
         servico: localStorage.getItem("servico"),
         preco: localStorage.getItem("preco"),
-        data: localStorage.getItem("data"),
-        horario: localStorage.getItem("horario"),
+        data: dataSelecionada,
+        horario: horarioSelecionado.horario,
         nome: document.getElementById("nome").value.trim(),
         whatsapp: document.getElementById("whatsapp").value.trim(),
-        barbeiro_id: localStorage.getItem("barbeiro_id"),
-        barbeiro_nome: localStorage.getItem("barbeiro_nome")
+        barbeiro_id: String(barbeiro.id),
+        barbeiro_nome: barbeiro.nome
     };
 
-    if (!agendamentoCliente.data || !agendamentoCliente.horario) {
-        alert("Escolha um dia e um horario antes de confirmar.");
-        return;
-    }
-
-    if (!agendamentoCliente.barbeiro_nome) {
-        alert("Escolha um barbeiro antes de confirmar.");
+    const { data, horario, barbeiro_id } = agendamentoCliente;
+    const diaSemana = new Date(`${data}T12:00:00`).getDay();
+    if (!disponibilidade.dias[diaSemana] || disponibilidade.datasBloqueadas.includes(data) ||
+        !disponibilidade.horarios.some(item => item.ativo && item.horario === horario) ||
+        obterHorariosOcupados(data, barbeiro_id).includes(horario)) {
+        invalidarHorarioSelecionado();
+        renderizarHorariosCliente();
+        avisoData.textContent = "O horário selecionado está indisponível. Escolha outro horário.";
         return;
     }
 
     try {
         await criarAgendamentoSupabase(agendamentoCliente);
     } catch (erro) {
-        console.error("Erro ao salvar agendamento.", mensagemErroSupabase(erro), erro);
-        alert(`Nao foi possivel confirmar o agendamento.\n\n${mensagemErroSupabase(erro)}`);
+        if (erro?.code === "23505") {
+            await carregarDisponibilidadePublica();
+            if (disponibilidadePublica) {
+                avisoData.textContent = "Não foi possível reservar esse horário. Confira a disponibilidade.";
+            }
+        } else {
+            alert("Não foi possível confirmar o agendamento. Tente novamente.");
+        }
         return;
+    }
+
+    if (disponibilidade === disponibilidadePublica) {
+        disponibilidade.ocupacoes.push({ data, horario, barbeiro_id });
+    } else if (areaCliente.style.display !== "none") {
+        carregarDisponibilidadePublica();
     }
 
     alert("Agendamento confirmado com sucesso!");
@@ -637,18 +646,14 @@ formAgendamento.addEventListener("submit", async (e) => {
     localStorage.removeItem("servico");
     localStorage.removeItem("preco");
     localStorage.removeItem("data");
-    localStorage.removeItem("horario");
+    invalidarHorarioSelecionado();
     localStorage.removeItem("barbeiro_id");
-    localStorage.removeItem("barbeiro_nome");
     areaHorarios.style.display = "none";
     barbeirosSection.style.display = "none";
-    dadosCliente.style.display = "none";
     servicos.style.display = "block";
     agendamento.style.display = "none";
     cardsServico.forEach(card => card.classList.remove("selecionado"));
     renderizarHorariosCliente();
-    renderizarProximosAtendimentos();
-    renderizarFaturamento();
 });
 
 btnAdmin.addEventListener("click", () => {
@@ -658,164 +663,268 @@ btnAdmin.addEventListener("click", () => {
     erroLogin.textContent = "";
 });
 
-// Ao entrar na área administrativa, se o usuário NÃO for admin, vamos bloquear o acesso.
-// (Isso evita que um barbeiro consiga entrar na tela de agendamentos que mostra tudo.)
-async function verificarAcessoAdministrador() {
+function identificarSessao(sessao) {
+    if (!sessao?.user?.id || !sessao.access_token) return null;
+
     try {
-        const { data: usuarioData } = await supabaseClient.auth.getUser();
-        if (!usuarioData?.user) return false;
+        const payload = sessao.access_token.split(".")[1];
+        const claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+        // A claim identifica a sessão durante a renovação do token. As RPCs verificam o perfil.
+        if (claims.session_id) return `${sessao.user.id}:${claims.session_id}`;
+    } catch {
+        // Um token sem claim de sessão só identifica a sessão enquanto não for renovado.
+    }
+    return `${sessao.user.id}:${sessao.access_token}`;
+}
 
-        const [admResponse, barbeiroResponse] = await Promise.all([
-            supabaseClient.rpc("eh_admin"),
-            supabaseClient.rpc("eh_barbeiro")
-        ]);
+function limparPainel() {
+    sessaoPainel?.controlador.abort();
+    sessaoPainel = null;
+    agendamentosPrivados = [];
+    diasDisponiveisCache = {};
+    horariosDisponiveisCache = [];
+    datasBloqueadasCache = [];
+    barbeirosCache = [];
 
-        if (admResponse.error || barbeiroResponse.error) return false;
-        return Boolean(admResponse.data && !barbeiroResponse.data);
+    areaAdmin.style.display = "none";
+    formEditar.style.display = "none";
+    formEditar.reset();
+    editarIndex.value = "";
+    buscaAgendamento.value = "";
+    filtroData.value = "";
+    filtroMesFaturamento.value = "";
+    novoHorario.value = "";
+    novaDataBloqueada.value = "";
+    carregarPainelAdmin();
+    atualizarSaudacao();
+}
+
+function sessaoPainelAtiva(sessao) {
+    return Boolean(sessao && sessaoPainel === sessao && sessaoAuth === sessao.auth);
+}
+
+async function confirmarSessaoAuth(auth) {
+    if (!auth || sessaoAuth !== auth) return false;
+
+    try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        return !error && sessaoAuth === auth && identificarSessao(data?.session) === auth.chave;
     } catch {
         return false;
     }
 }
 
+function loginAtual(tentativa) {
+    return tentativaLogin === tentativa && tentativa.auth && sessaoAuth === tentativa.auth;
+}
 
+function pedirNovoLogin() {
+    tentativaLogin = null;
+    limparPainel();
+    areaLogin.style.display = "block";
+    erroLogin.textContent = "Sua sessão mudou. Entre novamente para acessar o painel.";
+}
+
+supabaseClient.auth.onAuthStateChange((evento, sessao) => {
+    const chave = identificarSessao(sessao);
+    const mudou = chave !== (sessaoAuth?.chave ?? null) || evento === "SIGNED_OUT";
+    if (mudou) sessaoAuth = chave ? { chave } : null;
+
+    if (tentativaLogin && !tentativaLogin.auth && evento === "SIGNED_IN" && sessaoAuth) {
+        tentativaLogin.auth = sessaoAuth;
+    } else if (tentativaLogin && mudou && (tentativaLogin.auth || evento !== "INITIAL_SESSION")) {
+        pedirNovoLogin();
+    }
+
+    if (sessaoPainel && !sessaoPainelAtiva(sessaoPainel)) pedirNovoLogin();
+});
 
 formLogin.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const email = document.getElementById("usuario").value.trim();
-    const senha = document.getElementById("senha").value;
-
+    const botao = formLogin.querySelector('button[type="submit"]');
+    if (botao.disabled || encerrandoSessao) return;
+    botao.disabled = true;
     erroLogin.textContent = "";
 
-    const { error } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password: senha
-    });
+    const tentativa = { auth: null };
+    tentativaLogin = tentativa;
 
-    if (error) {
-        console.error("Erro no login.", mensagemErroSupabase(error), error);
-        erroLogin.textContent = mensagemErroSupabase(error) || "E-mail ou senha incorretos.";
-        return;
-    }
+    try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email: document.getElementById("usuario").value.trim(),
+            password: document.getElementById("senha").value
+        });
 
-    const [admResponse, barbeiroResponse] = await Promise.all([
-        supabaseClient.rpc("eh_admin"),
-        supabaseClient.rpc("eh_barbeiro")
-    ]);
-
-    if (admResponse.error || barbeiroResponse.error) {
-        await supabaseClient.auth.signOut();
-        erroLogin.textContent = "Nao foi possivel verificar o tipo de usuario. Tente novamente.";
-        return;
-    }
-
-    if (admResponse.data) {
-        usuarioTipo = "admin";
-    } else if (barbeiroResponse.data) {
-        usuarioTipo = "barbeiro";
-    } else {
-        await supabaseClient.auth.signOut();
-        erroLogin.textContent = "Acesso restrito: apenas administradores ou barbeiros podem acessar este painel.";
-        return;
-    }
-
-    if (usuarioTipo === "barbeiro") {
-        const { data: barbeiroId, error: barbeiroIdError } = await supabaseClient.rpc("barbeiro_atual_id");
-        if (barbeiroIdError || !barbeiroId) {
-            await supabaseClient.auth.signOut();
-            erroLogin.textContent = "Nao foi possivel identificar o barbeiro. Contate o suporte.";
+        if (tentativaLogin !== tentativa) return;
+        if (error) {
+            erroLogin.textContent = mensagemErroSupabase(error) || "E-mail ou senha incorretos.";
             return;
         }
-        usuarioBarbeiroId = barbeiroId;
+
+        if (!loginAtual(tentativa) || identificarSessao(data?.session) !== tentativa.auth.chave ||
+            !await confirmarSessaoAuth(tentativa.auth) || !loginAtual(tentativa)) {
+            if (tentativaLogin === tentativa) pedirNovoLogin();
+            return;
+        }
+
+        const [admResponse, barbeiroResponse] = await Promise.all([
+            supabaseClient.rpc("eh_admin"),
+            supabaseClient.rpc("eh_barbeiro")
+        ]);
+        if (!loginAtual(tentativa)) return;
+
+        let erroAcesso = "";
+        const tipo = admResponse.data ? "admin" : barbeiroResponse.data ? "barbeiro" : null;
+        let barbeiroId = null;
+        if (admResponse.error || barbeiroResponse.error) {
+            erroAcesso = "Não foi possível verificar o tipo de usuário. Tente novamente.";
+        } else if (!tipo) {
+            erroAcesso = "Acesso restrito: apenas administradores ou barbeiros podem acessar este painel.";
+        } else if (tipo === "barbeiro") {
+            const { data: id, error: erroId } = await supabaseClient.rpc("barbeiro_atual_id");
+            if (!loginAtual(tentativa)) return;
+            if (erroId || !idBarbeiroValido(id)) {
+                erroAcesso = "Não foi possível identificar o barbeiro. Contate o suporte.";
+            }
+            barbeiroId = id;
+        }
+
+        if (!await confirmarSessaoAuth(tentativa.auth) || !loginAtual(tentativa)) {
+            if (tentativaLogin === tentativa) pedirNovoLogin();
+            return;
+        }
+        if (erroAcesso) {
+            await supabaseClient.auth.signOut();
+            erroLogin.textContent = erroAcesso;
+            return;
+        }
+
+        const sessao = { auth: tentativa.auth, tipo, barbeiroId, controlador: new AbortController() };
+        const dados = await consultarDadosPainel(sessao);
+        if (!loginAtual(tentativa)) return;
+        if (!await confirmarSessaoAuth(tentativa.auth) || !loginAtual(tentativa)) {
+            if (tentativaLogin === tentativa) pedirNovoLogin();
+            return;
+        }
+
+        const { agendamentos, configuracao } = dados;
+        agendamentosPrivados = agendamentos;
+        diasDisponiveisCache = configuracao.dias;
+        horariosDisponiveisCache = configuracao.horarios;
+        datasBloqueadasCache = configuracao.datasBloqueadas;
+        barbeirosCache = configuracao.barbeiros;
+        sessaoPainel = sessao;
+
+        carregarPainelAdmin();
+        atualizarSaudacao();
+        areaCliente.style.display = "none";
+        areaLogin.style.display = "none";
+        areaAdmin.style.display = "block";
+        formLogin.reset();
+    } catch {
+        if (tentativaLogin === tentativa) {
+            limparPainel();
+            erroLogin.textContent = "Não foi possível carregar o painel. Tente novamente.";
+        }
+    } finally {
+        if (tentativaLogin === tentativa) tentativaLogin = null;
+        botao.disabled = false;
     }
-
-    areaLogin.style.display = "none";
-    areaAdmin.style.display = "block";
-
-    await carregarDadosSupabase(true);
-    carregarPainelAdmin();
-    atualizarSaudacao();
-
 });
 
 btnVoltar.addEventListener("click", async () => {
-    await supabaseClient.auth.signOut();
-    areaAdmin.style.display = "none";
+    if (encerrandoSessao) return;
+    encerrandoSessao = true;
+    tentativaLogin = null;
+    limparPainel();
+    formLogin.reset();
+
+    try {
+        const { error } = await supabaseClient.auth.signOut();
+        if (error) throw error;
+    } catch {
+        areaLogin.style.display = "block";
+        erroLogin.textContent = "Não foi possível encerrar a sessão. Entre novamente para acessar o painel.";
+        return;
+    } finally {
+        encerrandoSessao = false;
+    }
+
     areaLogin.style.display = "none";
     areaCliente.style.display = "block";
-    formLogin.reset();
-    await carregarDadosSupabase(false);
-    renderizarDiasCliente();
+    carregarDisponibilidadePublica();
 });
 
 function carregarPainelAdmin() {
-    if (!filtroMesFaturamento.value) {
+    if (sessaoPainel && !filtroMesFaturamento.value) {
         filtroMesFaturamento.value = mesAtualISO();
     }
 
     renderizarDiasAdmin();
     renderizarHorariosAdmin();
     renderizarDatasBloqueadas();
-    renderizarProximosAtendimentos();
+    atualizarAgendaPainel();
     renderizarAgendamentos();
     renderizarFaturamento();
-    atualizarResumo();
 }
 
 function renderizarDiasAdmin() {
-    const diasDisponiveis = obterDiasDisponiveis();
-
     checkboxesDia.forEach(checkbox => {
-        checkbox.checked = Boolean(diasDisponiveis[checkbox.dataset.dia]);
+        checkbox.checked = Boolean(diasDisponiveisCache[checkbox.dataset.dia]);
+        if (!sessaoPainel) checkbox.disabled = false;
     });
 }
 
 checkboxesDia.forEach(checkbox => {
     checkbox.addEventListener("change", async () => {
-        const diasDisponiveis = obterDiasDisponiveis();
-        diasDisponiveis[checkbox.dataset.dia] = checkbox.checked;
+        const sessao = sessaoPainel;
+        if (!sessaoPainelAtiva(sessao)) return;
+        checkbox.disabled = true;
 
         try {
-            await salvarDiasDisponiveisSupabase(diasDisponiveis);
+            await salvarDiaDisponivelSupabase(sessao, checkbox.dataset.dia, checkbox.checked);
         } catch (erro) {
             console.error("Erro ao salvar dias disponiveis.", erro);
             alert("Nao foi possivel salvar os dias disponiveis.");
+        } finally {
+            if (sessaoPainelAtiva(sessao)) {
+                checkbox.disabled = false;
+                renderizarDiasAdmin();
+            }
         }
-
-        renderizarDiasCliente();
-        renderizarHorariosCliente();
     });
 });
 
 formHorario.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const sessao = sessaoPainel;
+    if (!sessaoPainelAtiva(sessao)) return;
 
     const horario = novoHorario.value;
-    const horarios = obterHorariosDisponiveis();
-    const horarioExiste = horarios.some(item => item.horario === horario);
+    const horarioExiste = horariosDisponiveisCache.some(item => item.horario === horario);
 
     if (!horario || horarioExiste) {
         novoHorario.value = "";
         return;
     }
 
-    horarios.push({ horario, ativo: true });
-
     try {
-        await salvarHorariosDisponiveisSupabase(horarios);
+        await salvarHorarioDisponivelSupabase(sessao, horario, true);
     } catch (erro) {
         console.error("Erro ao salvar horario.", erro);
         alert("Nao foi possivel salvar o horario.");
         return;
     }
 
+    if (!sessaoPainelAtiva(sessao)) return;
     novoHorario.value = "";
     renderizarHorariosAdmin();
-    renderizarHorariosCliente();
 });
 
 function renderizarHorariosAdmin() {
-    const horarios = ordenarHorarios(obterHorariosDisponiveis());
+    const sessao = sessaoPainel;
+    const horarios = ordenarHorarios(horariosDisponiveisCache);
 
     listaHorariosAdmin.innerHTML = "";
 
@@ -836,42 +945,33 @@ function renderizarHorariosAdmin() {
         remover.className = "btn-excluir pequeno";
 
         checkbox.addEventListener("change", async () => {
-            const horariosAtualizados = obterHorariosDisponiveis().map(horario => {
-                if (horario.horario === item.horario) {
-                    return { ...horario, ativo: checkbox.checked };
-                }
-
-                return horario;
-            });
+            if (!sessaoPainelAtiva(sessao)) return;
+            checkbox.disabled = true;
+            remover.disabled = true;
 
             try {
-                await salvarHorariosDisponiveisSupabase(horariosAtualizados);
+                await salvarHorarioDisponivelSupabase(sessao, item.horario, checkbox.checked);
             } catch (erro) {
                 console.error("Erro ao atualizar horario.", erro);
                 alert("Nao foi possivel atualizar o horario.");
+            } finally {
+                if (sessaoPainelAtiva(sessao)) renderizarHorariosAdmin();
             }
-
-            renderizarHorariosCliente();
         });
 
         remover.addEventListener("click", async () => {
+            if (!sessaoPainelAtiva(sessao)) return;
             if (!confirm(`Remover o horario ${item.horario}?`)) return;
 
-            const horariosAtualizados = obterHorariosDisponiveis().filter(horario => {
-                return horario.horario !== item.horario;
-            });
-
             try {
-                await removerHorarioSupabase(item.horario);
-                salvarHorariosDisponiveis(horariosAtualizados);
+                await removerHorarioSupabase(sessao, item.horario);
             } catch (erro) {
                 console.error("Erro ao remover horario.", erro);
                 alert("Nao foi possivel remover o horario.");
                 return;
             }
 
-            renderizarHorariosAdmin();
-            renderizarHorariosCliente();
+            if (sessaoPainelAtiva(sessao)) renderizarHorariosAdmin();
         });
 
         label.appendChild(checkbox);
@@ -882,18 +982,19 @@ function renderizarHorariosAdmin() {
     });
 }
 
-function renderizarProximosAtendimentos() {
+function obterAtendimentosFuturos() {
     const agora = new Date();
-    const proximos = obterAgendamentos()
+    return agendamentosPrivados
         .filter(item => {
             if (!item.data || !item.horario) return false;
             return new Date(`${item.data}T${item.horario}:00`) >= agora;
         })
         .sort((a, b) => {
             return `${a.data} ${a.horario}`.localeCompare(`${b.data} ${b.horario}`);
-        })
-        .slice(0, 5);
+        });
+}
 
+function renderizarProximosAtendimentos(proximos) {
     listaProximosAtendimentos.innerHTML = "";
 
     if (proximos.length === 0) {
@@ -901,24 +1002,27 @@ function renderizarProximosAtendimentos() {
         return;
     }
 
-    proximos.forEach(item => {
+    proximos.slice(0, 5).forEach(item => {
         const linha = document.createElement("div");
+        const detalhes = document.createElement("div");
+        const cliente = document.createElement("strong");
+        const servico = document.createElement("span");
+        const whatsapp = document.createElement("small");
         linha.className = "proximo-atendimento-item";
-
-        linha.innerHTML = `
-            <div>
-                <strong>${item.nome || "Cliente"}</strong>
-                <span>${item.servico || "Servico"} - ${formatarData(item.data)} as ${item.horario}</span>
-            </div>
-            <small>${item.whatsapp || ""}</small>
-        `;
-
+        cliente.textContent = item.nome || "Cliente";
+        servico.textContent = `${item.servico || "Servico"} - ${formatarData(item.data)} as ${item.horario}`;
+        whatsapp.textContent = item.whatsapp || "";
+        detalhes.appendChild(cliente);
+        detalhes.appendChild(servico);
+        linha.appendChild(detalhes);
+        linha.appendChild(whatsapp);
         listaProximosAtendimentos.appendChild(linha);
     });
 }
 
 function renderizarDatasBloqueadas() {
-    const datas = obterDatasBloqueadas();
+    const sessao = sessaoPainel;
+    const datas = datasBloqueadasCache;
 
     listaDatasBloqueadas.innerHTML = "";
 
@@ -939,19 +1043,18 @@ function renderizarDatasBloqueadas() {
         remover.textContent = "Remover";
 
         remover.addEventListener("click", async () => {
+            if (!sessaoPainelAtiva(sessao)) return;
             if (!confirm(`Remover bloqueio de ${formatarData(data)}?`)) return;
 
             try {
-                await removerDataBloqueadaSupabase(data);
+                await removerDataBloqueadaSupabase(sessao, data);
             } catch (erro) {
                 console.error("Erro ao remover data bloqueada.", erro);
                 alert("Nao foi possivel remover a data bloqueada.");
                 return;
             }
 
-            renderizarDatasBloqueadas();
-            renderizarDiasCliente();
-            renderizarHorariosCliente();
+            if (sessaoPainelAtiva(sessao)) renderizarDatasBloqueadas();
         });
 
         linha.appendChild(texto);
@@ -964,7 +1067,7 @@ function agendamentosFiltrados() {
     const termo = buscaAgendamento.value.trim().toLowerCase();
     const data = filtroData.value;
 
-    return obterAgendamentos()
+    return agendamentosPrivados
         .filter(agendamentoItem => {
             const textoCompleto = [
                 agendamentoItem.nome,
@@ -985,6 +1088,7 @@ function agendamentosFiltrados() {
 }
 
 function renderizarAgendamentos() {
+    const sessao = sessaoPainel;
     const agendamentos = agendamentosFiltrados();
 
     tabelaAgendamentos.innerHTML = "";
@@ -1016,25 +1120,21 @@ function renderizarAgendamentos() {
         botaoEditar.className = "btn-editar";
         botaoEditar.dataset.id = agendamentoItem.id;
         botaoEditar.textContent = "Editar";
+        botaoEditar.addEventListener("click", () => {
+            if (sessaoPainelAtiva(sessao)) abrirEdicao(agendamentoItem.id);
+        });
 
         botaoExcluir.type = "button";
         botaoExcluir.className = "btn-excluir pequeno";
         botaoExcluir.dataset.id = agendamentoItem.id;
         botaoExcluir.textContent = "Excluir";
+        botaoExcluir.addEventListener("click", () => excluirAgendamento(sessao, agendamentoItem.id));
 
         acoes.appendChild(botaoEditar);
         acoes.appendChild(botaoExcluir);
         linha.appendChild(acoes);
 
         tabelaAgendamentos.appendChild(linha);
-    });
-
-    document.querySelectorAll(".btn-editar").forEach(botao => {
-        botao.addEventListener("click", () => abrirEdicao(Number(botao.dataset.id)));
-    });
-
-    document.querySelectorAll(".acoes-tabela .btn-excluir").forEach(botao => {
-        botao.addEventListener("click", () => excluirAgendamento(Number(botao.dataset.id)));
     });
 }
 
@@ -1044,13 +1144,10 @@ function criarCelula(valor) {
     return celula;
 }
 
-function atualizarResumo() {
-    const agendamentos = obterAgendamentos();
+function atualizarResumo(proximos) {
+    const agendamentos = agendamentosPrivados;
     const hoje = dataAtualISO();
     const mesAtual = mesAtualISO();
-    const proximos = agendamentos
-        .filter(item => item.data >= hoje)
-        .sort((a, b) => `${a.data} ${a.horario}`.localeCompare(`${b.data} ${b.horario}`));
 
     totalAgendamentos.textContent = agendamentos.filter(item => {
         return item.data && item.data.slice(0, 7) === mesAtual;
@@ -1059,9 +1156,15 @@ function atualizarResumo() {
     proximoHorario.textContent = proximos.length ? proximos[0].horario : "--:--";
 }
 
+function atualizarAgendaPainel() {
+    const proximos = obterAtendimentosFuturos();
+    renderizarProximosAtendimentos(proximos);
+    atualizarResumo(proximos);
+}
+
 function renderizarFaturamento() {
     const mesSelecionado = filtroMesFaturamento.value || mesAtualISO();
-    const agendamentosMes = obterAgendamentos().filter(item => {
+    const agendamentosMes = agendamentosPrivados.filter(item => {
         return item.data && item.data.slice(0, 7) === mesSelecionado;
     });
 
@@ -1086,7 +1189,7 @@ function renderizarFaturamento() {
         agrupados[nomeServico].total += valor;
 
         return agrupados;
-    }, {});
+    }, Object.create(null));
 
     faturamentoMes.textContent = formatarMoeda(total);
     atendimentosMes.textContent = totalAtendimentos;
@@ -1104,14 +1207,17 @@ function renderizarFaturamento() {
 
     rankingServicos.forEach(([servico, dados]) => {
         const linha = document.createElement("div");
+        const nome = document.createElement("span");
+        const total = document.createElement("strong");
+        const quantidade = document.createElement("small");
         linha.className = "faturamento-servico-item";
 
-        linha.innerHTML = `
-            <span>${servico}</span>
-            <strong>${formatarMoeda(dados.total)}</strong>
-            <small>${dados.quantidade} atendimento${dados.quantidade === 1 ? "" : "s"}</small>
-        `;
-
+        nome.textContent = servico;
+        total.textContent = formatarMoeda(dados.total);
+        quantidade.textContent = `${dados.quantidade} atendimento${dados.quantidade === 1 ? "" : "s"}`;
+        linha.appendChild(nome);
+        linha.appendChild(total);
+        linha.appendChild(quantidade);
         faturamentoServicos.appendChild(linha);
     });
 }
@@ -1122,6 +1228,7 @@ function valorCsv(valor) {
 }
 
 function exportarAgendamentosCsv() {
+    if (!sessaoPainelAtiva(sessaoPainel)) return;
     const agendamentos = agendamentosFiltrados();
     const cabecalho = ["Cliente", "Servico", "Valor", "Data", "Horario", "WhatsApp"];
     const linhas = agendamentos.map(item => [
@@ -1160,31 +1267,31 @@ btnLimparFiltros.addEventListener("click", () => {
 
 formDataBloqueada.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const sessao = sessaoPainel;
+    if (!sessaoPainelAtiva(sessao)) return;
 
     const data = novaDataBloqueada.value;
 
-    if (!data || obterDatasBloqueadas().includes(data)) {
+    if (!data || datasBloqueadasCache.includes(data)) {
         novaDataBloqueada.value = "";
         return;
     }
 
     try {
-        await salvarDataBloqueadaSupabase(data);
+        await salvarDataBloqueadaSupabase(sessao, data);
     } catch (erro) {
         console.error("Erro ao bloquear data.", erro);
         alert("Nao foi possivel bloquear a data.");
         return;
     }
 
+    if (!sessaoPainelAtiva(sessao)) return;
     novaDataBloqueada.value = "";
     renderizarDatasBloqueadas();
-    renderizarDiasCliente();
-    renderizarHorariosCliente();
 });
 
 function abrirEdicao(id) {
-    const agendamentos = obterAgendamentos();
-    const agendamentoItem = agendamentos.find(item => item.id === id);
+    const agendamentoItem = agendamentosPrivados.find(item => item.id === id);
 
     if (!agendamentoItem) return;
 
@@ -1202,8 +1309,9 @@ function abrirEdicao(id) {
 formEditar.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const id = Number(editarIndex.value);
-    const agendamentoItem = obterAgendamentos().find(item => item.id === id);
+    const sessao = sessaoPainel;
+    if (!sessaoPainelAtiva(sessao)) return;
+    const agendamentoItem = agendamentosPrivados.find(item => String(item.id) === editarIndex.value);
 
     if (!agendamentoItem) return;
 
@@ -1216,7 +1324,8 @@ formEditar.addEventListener("submit", async (e) => {
     };
 
     try {
-        await atualizarAgendamentoSupabase(id, agendamentoAtualizado);
+        if (!await atualizarAgendamentoSupabase(sessao, agendamentoItem.id, agendamentoAtualizado) ||
+            !sessaoPainelAtiva(sessao)) return;
     } catch (erro) {
         console.error("Erro ao editar agendamento.", erro);
         alert("Nao foi possivel editar o agendamento.");
@@ -1225,9 +1334,8 @@ formEditar.addEventListener("submit", async (e) => {
 
     formEditar.style.display = "none";
     renderizarAgendamentos();
-    renderizarProximosAtendimentos();
+    atualizarAgendaPainel();
     renderizarFaturamento();
-    atualizarResumo();
 });
 
 btnCancelarEdicao.addEventListener("click", () => {
@@ -1235,11 +1343,13 @@ btnCancelarEdicao.addEventListener("click", () => {
     formEditar.reset();
 });
 
-async function excluirAgendamento(id) {
+async function excluirAgendamento(sessao, id) {
+    if (!sessaoPainelAtiva(sessao)) return;
+    if (!agendamentosPrivados.some(item => item.id === id)) return;
     if (!confirm("Deseja realmente excluir este agendamento?")) return;
 
     try {
-        await excluirAgendamentoSupabase(id);
+        if (!await excluirAgendamentoSupabase(sessao, id) || !sessaoPainelAtiva(sessao)) return;
     } catch (erro) {
         console.error("Erro ao excluir agendamento.", erro);
         alert("Nao foi possivel excluir o agendamento.");
@@ -1247,11 +1357,8 @@ async function excluirAgendamento(id) {
     }
 
     renderizarAgendamentos();
-    renderizarProximosAtendimentos();
+    atualizarAgendaPainel();
     renderizarFaturamento();
-    atualizarResumo();
 }
 
-carregarDadosSupabase().then(() => {
-    renderizarDiasCliente();
-});
+carregarDisponibilidadePublica();
