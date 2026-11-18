@@ -27,6 +27,23 @@ const adminSaudacao = document.getElementById("admin-saudacao");
 const formLogin = document.getElementById("form-login");
 const erroLogin = document.getElementById("erro-login");
 const btnVoltar = document.getElementById("btn-voltar");
+const statusLoginAdmin = document.getElementById("status-login-admin");
+const botoesSecaoAdmin = document.querySelectorAll("[data-secao-admin]");
+const secoesAdmin = document.querySelectorAll(".admin-secao");
+const filtroProfissionalAdmin = document.getElementById("filtro-profissional-admin");
+const profissionalAdmin = document.getElementById("profissional-admin");
+const listaAtendimentosHoje = document.getElementById("lista-atendimentos-hoje");
+const agendaAdminData = document.getElementById("agenda-admin-data");
+const cartoesAgendamentos = document.getElementById("cartoes-agendamentos");
+const tituloEditarAgendamento = document.getElementById("titulo-editar-agendamento");
+const camposEdicao = document.getElementById("campos-edicao-agendamento");
+const statusPainel = {
+    agendamentos: document.getElementById("status-agendamentos-admin"),
+    edicao: document.getElementById("status-edicao-admin"),
+    dias: document.getElementById("status-dias-admin"),
+    horarios: document.getElementById("status-horarios-admin"),
+    bloqueios: document.getElementById("status-bloqueios-admin")
+};
 
 const totalAgendamentos = document.getElementById("total-agendamentos");
 const agendamentosHoje = document.getElementById("agendamentos-hoje");
@@ -87,6 +104,8 @@ let sessaoAuth = null;
 let tentativaLogin = null;
 let sessaoPainel = null;
 let encerrandoSessao = false;
+let secaoAdmin = "painel-agenda";
+let relogioPainel = null;
 
 for (const chave of ["agendamentos", "barbeiro_nome", "servico", "preco", "barbeiro_id", "data", "horario"]) {
     localStorage.removeItem(chave);
@@ -269,8 +288,9 @@ async function salvarDiaDisponivelSupabase(sessao, diaSemana, ativo) {
         .from("dias_disponiveis")
         .upsert([{ dia_semana: Number(diaSemana), ativo }], { onConflict: "dia_semana" }));
 
-    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    if (!resposta || !sessaoPainelAtiva(sessao)) return false;
     diasDisponiveisCache[diaSemana] = ativo;
+    return true;
 }
 
 async function salvarHorarioDisponivelSupabase(sessao, horario, ativo) {
@@ -278,11 +298,12 @@ async function salvarHorarioDisponivelSupabase(sessao, horario, ativo) {
         .from("horarios_disponiveis")
         .upsert([{ horario, ativo }], { onConflict: "horario" }));
 
-    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    if (!resposta || !sessaoPainelAtiva(sessao)) return false;
     horariosDisponiveisCache = [
         ...horariosDisponiveisCache.filter(item => item.horario !== horario),
         { horario, ativo }
     ];
+    return true;
 }
 
 async function removerHorarioSupabase(sessao, horario) {
@@ -291,8 +312,9 @@ async function removerHorarioSupabase(sessao, horario) {
         .delete()
         .eq("horario", horario));
 
-    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    if (!resposta || !sessaoPainelAtiva(sessao)) return false;
     horariosDisponiveisCache = horariosDisponiveisCache.filter(item => item.horario !== horario);
+    return true;
 }
 
 async function salvarDataBloqueadaSupabase(sessao, data) {
@@ -300,8 +322,9 @@ async function salvarDataBloqueadaSupabase(sessao, data) {
         .from("datas_bloqueadas")
         .insert([{ data }]));
 
-    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    if (!resposta || !sessaoPainelAtiva(sessao)) return false;
     datasBloqueadasCache = [...datasBloqueadasCache, data].sort();
+    return true;
 }
 
 async function removerDataBloqueadaSupabase(sessao, data) {
@@ -310,12 +333,12 @@ async function removerDataBloqueadaSupabase(sessao, data) {
         .delete()
         .eq("data", data));
 
-    if (!resposta || !sessaoPainelAtiva(sessao)) return;
+    if (!resposta || !sessaoPainelAtiva(sessao)) return false;
     datasBloqueadasCache = datasBloqueadasCache.filter(item => item !== data);
+    return true;
 }
 
-function dataAtualISO() {
-    const hoje = new Date();
+function dataAtualISO(hoje = new Date()) {
     const ano = hoje.getFullYear();
     const mes = String(hoje.getMonth() + 1).padStart(2, "0");
     const dia = String(hoje.getDate()).padStart(2, "0");
@@ -714,6 +737,7 @@ btnAdmin.addEventListener("click", () => {
     areaLogin.style.display = "block";
     areaAdmin.style.display = "none";
     erroLogin.textContent = "";
+    statusLoginAdmin.textContent = "";
 });
 
 function identificarSessao(sessao) {
@@ -733,6 +757,8 @@ function identificarSessao(sessao) {
 function limparPainel() {
     sessaoPainel?.controlador.abort();
     sessaoPainel = null;
+    clearTimeout(relogioPainel);
+    relogioPainel = null;
     agendamentosPrivados = [];
     diasDisponiveisCache = {};
     horariosDisponiveisCache = [];
@@ -743,12 +769,17 @@ function limparPainel() {
     formEditar.style.display = "none";
     formEditar.reset();
     editarIndex.value = "";
+    delete camposEdicao.dataset.operacao;
     buscaAgendamento.value = "";
     filtroData.value = "";
+    profissionalAdmin.value = "";
     filtroMesFaturamento.value = "";
     novoHorario.value = "";
     novaDataBloqueada.value = "";
+    Object.values(statusPainel).forEach(status => { status.textContent = ""; });
+    mostrarSecaoAdmin("painel-agenda");
     carregarPainelAdmin();
+    atualizarControlesPendentes();
     atualizarSaudacao();
 }
 
@@ -775,6 +806,7 @@ function pedirNovoLogin() {
     tentativaLogin = null;
     limparPainel();
     areaLogin.style.display = "block";
+    statusLoginAdmin.textContent = "";
     erroLogin.textContent = "Sua sessão mudou. Entre novamente para acessar o painel.";
 }
 
@@ -799,6 +831,7 @@ formLogin.addEventListener("submit", async (e) => {
     if (botao.disabled || encerrandoSessao) return;
     botao.disabled = true;
     erroLogin.textContent = "";
+    statusLoginAdmin.textContent = "Entrando…";
 
     const tentativa = { auth: null };
     tentativaLogin = tentativa;
@@ -853,7 +886,11 @@ formLogin.addEventListener("submit", async (e) => {
             return;
         }
 
-        const sessao = { auth: tentativa.auth, tipo, barbeiroId, controlador: new AbortController() };
+        const sessao = {
+            auth: tentativa.auth, tipo, barbeiroId,
+            controlador: new AbortController(), operacoesPendentes: new Set()
+        };
+        statusLoginAdmin.textContent = "Carregando o painel…";
         const dados = await consultarDadosPainel(sessao);
         if (!loginAtual(tentativa)) return;
         if (!await confirmarSessaoAuth(tentativa.auth) || !loginAtual(tentativa)) {
@@ -874,6 +911,8 @@ formLogin.addEventListener("submit", async (e) => {
         areaCliente.style.display = "none";
         areaLogin.style.display = "none";
         areaAdmin.style.display = "block";
+        mostrarSecaoAdmin("painel-agenda", true);
+        iniciarRelogioPainel(sessao);
         formLogin.reset();
     } catch {
         if (tentativaLogin === tentativa) {
@@ -882,6 +921,7 @@ formLogin.addEventListener("submit", async (e) => {
         }
     } finally {
         if (tentativaLogin === tentativa) tentativaLogin = null;
+        statusLoginAdmin.textContent = "";
         botao.disabled = false;
     }
 });
@@ -914,6 +954,7 @@ function carregarPainelAdmin() {
         filtroMesFaturamento.value = mesAtualISO();
     }
 
+    renderizarOpcoesProfissionais();
     renderizarDiasAdmin();
     renderizarHorariosAdmin();
     renderizarDatasBloqueadas();
@@ -922,197 +963,279 @@ function carregarPainelAdmin() {
     renderizarFaturamento();
 }
 
+function mostrarSecaoAdmin(id, focar = false) {
+    secaoAdmin = id;
+    secoesAdmin.forEach(secao => { secao.hidden = secao.id !== id; });
+    botoesSecaoAdmin.forEach(botao => {
+        if (botao.dataset.secaoAdmin === id) botao.setAttribute("aria-current", "true");
+        else botao.removeAttribute("aria-current");
+    });
+    filtroProfissionalAdmin.hidden = sessaoPainel?.tipo !== "admin" ||
+        (id !== "painel-agenda" && id !== "painel-agendamentos");
+    if (focar) document.getElementById(id).querySelector("h3").focus();
+}
+
+botoesSecaoAdmin.forEach(botao => {
+    botao.addEventListener("click", () => {
+        if (sessaoPainelAtiva(sessaoPainel)) mostrarSecaoAdmin(botao.dataset.secaoAdmin, true);
+    });
+});
+
+function iniciarRelogioPainel(sessao) {
+    const atualizar = () => {
+        if (!sessaoPainelAtiva(sessao)) return;
+        clearTimeout(relogioPainel);
+        const agora = new Date();
+        atualizarAgendaPainel(agora);
+        relogioPainel = setTimeout(atualizar, 60_000 - agora.getTime() % 60_000);
+    };
+    const opcoes = { signal: sessao.controlador.signal };
+    window.addEventListener("focus", atualizar, opcoes);
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) atualizar();
+    }, opcoes);
+    atualizar();
+}
+
+function renderizarOpcoesProfissionais() {
+    const anterior = profissionalAdmin.value;
+    profissionalAdmin.replaceChildren();
+    if (sessaoPainel?.tipo !== "admin") return;
+
+    const profissionais = new Map(barbeirosCache.map(item => [String(item.id), item.nome]));
+    agendamentosPrivados.forEach(item => {
+        if (item.barbeiro_id == null) return;
+        const id = String(item.barbeiro_id);
+        if (!profissionais.has(id)) profissionais.set(id, item.barbeiro_nome || "Profissional sem nome");
+    });
+    const adicionarOpcao = (id, nome) => {
+        const opcao = document.createElement("option");
+        opcao.value = id;
+        opcao.textContent = nome;
+        profissionalAdmin.appendChild(opcao);
+    };
+    adicionarOpcao("", "Todos os profissionais");
+    [...profissionais].sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
+        .forEach(([id, nome]) => adicionarOpcao(id, nome));
+    profissionalAdmin.value = profissionais.has(anterior) ? anterior : "";
+}
+
+profissionalAdmin.addEventListener("change", () => {
+    atualizarAgendaPainel();
+    renderizarAgendamentos();
+});
+
+function operacaoPendente(sessao, chave) {
+    return Boolean(sessao?.operacoesPendentes.has(chave));
+}
+
+function atualizarControlesPendentes() {
+    const edicaoPendente = operacaoPendente(sessaoPainel, camposEdicao.dataset.operacao);
+    camposEdicao.disabled = edicaoPendente;
+    areaAdmin.querySelectorAll("[data-operacao]").forEach(controle => {
+        controle.disabled = operacaoPendente(sessaoPainel, controle.dataset.operacao) ||
+            (edicaoPendente && controle.classList.contains("btn-editar"));
+    });
+
+    for (const [formulario, chave] of [[formHorario, `horario:${novoHorario.value}`],
+        [formDataBloqueada, `bloqueio:${novaDataBloqueada.value}`]]) {
+        const pendente = operacaoPendente(sessaoPainel, chave);
+        formulario.querySelectorAll("button, input").forEach(controle => { controle.disabled = pendente; });
+    }
+}
+
+async function executarOperacaoPainel(sessao, chave, status, executar, sucesso, falha) {
+    if (!sessaoPainelAtiva(sessao) || operacaoPendente(sessao, chave)) return false;
+
+    sessao.operacoesPendentes.add(chave);
+    atualizarControlesPendentes();
+    status.textContent = "Salvando…";
+    try {
+        if (!await executar() || !sessaoPainelAtiva(sessao)) return false;
+        status.textContent = sucesso;
+        return true;
+    } catch {
+        if (sessaoPainelAtiva(sessao)) status.textContent = falha;
+        return false;
+    } finally {
+        sessao.operacoesPendentes.delete(chave);
+        if (sessaoPainelAtiva(sessao)) atualizarControlesPendentes();
+    }
+}
+
 function renderizarDiasAdmin() {
     checkboxesDia.forEach(checkbox => {
-        checkbox.checked = Boolean(diasDisponiveisCache[checkbox.dataset.dia]);
-        if (!sessaoPainel) checkbox.disabled = false;
+        if (!operacaoPendente(sessaoPainel, checkbox.dataset.operacao)) {
+            checkbox.checked = Boolean(diasDisponiveisCache[checkbox.dataset.dia]);
+        }
     });
 }
 
 checkboxesDia.forEach(checkbox => {
+    const dia = checkbox.dataset.dia;
+    const chave = `dia:${dia}`;
+    checkbox.dataset.operacao = chave;
     checkbox.addEventListener("change", async () => {
         const sessao = sessaoPainel;
-        if (!sessaoPainelAtiva(sessao)) return;
-        checkbox.disabled = true;
-
-        try {
-            await salvarDiaDisponivelSupabase(sessao, checkbox.dataset.dia, checkbox.checked);
-        } catch (erro) {
-            console.error("Erro ao salvar dias disponiveis.", erro);
-            alert("Nao foi possivel salvar os dias disponiveis.");
-        } finally {
-            if (sessaoPainelAtiva(sessao)) {
-                checkbox.disabled = false;
-                renderizarDiasAdmin();
-            }
-        }
+        await executarOperacaoPainel(sessao, chave, statusPainel.dias,
+            () => salvarDiaDisponivelSupabase(sessao, dia, checkbox.checked),
+            "Dia atualizado.", "Não foi possível atualizar o dia.");
+        if (sessaoPainelAtiva(sessao)) renderizarDiasAdmin();
     });
 });
 
-formHorario.addEventListener("submit", async (e) => {
+formHorario.addEventListener("submit", async e => {
     e.preventDefault();
     const sessao = sessaoPainel;
-    if (!sessaoPainelAtiva(sessao)) return;
-
     const horario = novoHorario.value;
-    const horarioExiste = horariosDisponiveisCache.some(item => item.horario === horario);
-
-    if (!horario || horarioExiste) {
-        novoHorario.value = "";
+    const chave = `horario:${horario}`;
+    if (!sessaoPainelAtiva(sessao) || !horario || operacaoPendente(sessao, chave)) return;
+    if (horariosDisponiveisCache.some(item => item.horario === horario)) {
+        statusPainel.horarios.textContent = "Esse horário já está na lista.";
         return;
     }
 
-    try {
-        await salvarHorarioDisponivelSupabase(sessao, horario, true);
-    } catch (erro) {
-        console.error("Erro ao salvar horario.", erro);
-        alert("Nao foi possivel salvar o horario.");
-        return;
-    }
-
-    if (!sessaoPainelAtiva(sessao)) return;
+    const salvo = await executarOperacaoPainel(sessao, chave, statusPainel.horarios,
+        () => salvarHorarioDisponivelSupabase(sessao, horario, true),
+        "Horário adicionado.", "Não foi possível adicionar o horário.");
+    if (!salvo || !sessaoPainelAtiva(sessao)) return;
     novoHorario.value = "";
     renderizarHorariosAdmin();
 });
 
 function renderizarHorariosAdmin() {
     const sessao = sessaoPainel;
-    const horarios = ordenarHorarios(horariosDisponiveisCache);
+    listaHorariosAdmin.replaceChildren();
+    if (horariosDisponiveisCache.length === 0) {
+        mostrarListaVazia(listaHorariosAdmin, "Nenhum horário configurado.");
+        return;
+    }
 
-    listaHorariosAdmin.innerHTML = "";
-
-    horarios.forEach(item => {
+    ordenarHorarios(horariosDisponiveisCache).forEach(({ horario, ativo }) => {
         const linha = document.createElement("div");
-        linha.className = "horario-admin-item";
-
         const label = document.createElement("label");
         const checkbox = document.createElement("input");
         const texto = document.createElement("span");
         const remover = document.createElement("button");
+        const chave = `horario:${horario}`;
 
+        linha.className = "horario-admin-item";
         checkbox.type = "checkbox";
-        checkbox.checked = item.ativo;
-        texto.textContent = item.horario;
+        checkbox.checked = ativo;
+        checkbox.dataset.operacao = chave;
+        checkbox.disabled = operacaoPendente(sessao, chave);
+        checkbox.setAttribute("aria-label", `Horário ${horario} disponível`);
+        texto.textContent = horario;
         remover.type = "button";
         remover.textContent = "Remover";
         remover.className = "btn-excluir pequeno";
+        remover.dataset.operacao = chave;
+        remover.disabled = checkbox.disabled;
+        remover.setAttribute("aria-label", `Remover horário ${horario}`);
 
         checkbox.addEventListener("change", async () => {
-            if (!sessaoPainelAtiva(sessao)) return;
-            checkbox.disabled = true;
-            remover.disabled = true;
-
-            try {
-                await salvarHorarioDisponivelSupabase(sessao, item.horario, checkbox.checked);
-            } catch (erro) {
-                console.error("Erro ao atualizar horario.", erro);
-                alert("Nao foi possivel atualizar o horario.");
-            } finally {
-                if (sessaoPainelAtiva(sessao)) renderizarHorariosAdmin();
+            const salvo = await executarOperacaoPainel(sessao, chave, statusPainel.horarios,
+                () => salvarHorarioDisponivelSupabase(sessao, horario, checkbox.checked),
+                "Horário atualizado.", "Não foi possível atualizar o horário.");
+            if (sessaoPainelAtiva(sessao) && !salvo && !operacaoPendente(sessao, chave)) {
+                checkbox.checked = Boolean(horariosDisponiveisCache.find(item => item.horario === horario)?.ativo);
             }
         });
 
         remover.addEventListener("click", async () => {
-            if (!sessaoPainelAtiva(sessao)) return;
-            if (!confirm(`Remover o horario ${item.horario}?`)) return;
-
-            try {
-                await removerHorarioSupabase(sessao, item.horario);
-            } catch (erro) {
-                console.error("Erro ao remover horario.", erro);
-                alert("Nao foi possivel remover o horario.");
-                return;
-            }
-
-            if (sessaoPainelAtiva(sessao)) renderizarHorariosAdmin();
+            if (!sessaoPainelAtiva(sessao) || operacaoPendente(sessao, chave)) return;
+            if (!confirm(`Remover o horário ${horario}?`)) return;
+            const removido = await executarOperacaoPainel(sessao, chave, statusPainel.horarios,
+                () => removerHorarioSupabase(sessao, horario),
+                "Horário removido.", "Não foi possível remover o horário.");
+            if (removido && sessaoPainelAtiva(sessao)) renderizarHorariosAdmin();
         });
 
-        label.appendChild(checkbox);
-        label.appendChild(texto);
-        linha.appendChild(label);
-        linha.appendChild(remover);
+        label.append(checkbox, texto);
+        linha.append(label, remover);
         listaHorariosAdmin.appendChild(linha);
     });
 }
 
-function obterAtendimentosFuturos() {
-    const agora = new Date();
-    return agendamentosPrivados
-        .filter(item => {
-            if (!item.data || !item.horario) return false;
-            return new Date(`${item.data}T${item.horario}:00`) >= agora;
-        })
-        .sort((a, b) => {
-            return `${a.data} ${a.horario}`.localeCompare(`${b.data} ${b.horario}`);
-        });
+function mostrarListaVazia(lista, mensagem) {
+    const aviso = document.createElement("p");
+    aviso.className = "mensagem-vazia";
+    aviso.textContent = mensagem;
+    lista.appendChild(aviso);
 }
 
-function renderizarProximosAtendimentos(proximos) {
-    listaProximosAtendimentos.innerHTML = "";
-
-    if (proximos.length === 0) {
-        listaProximosAtendimentos.innerHTML = '<p class="mensagem-vazia">Nenhum proximo atendimento encontrado.</p>';
+function renderizarListaAgenda(lista, agendamentos, mensagem, mostrarData = false) {
+    lista.replaceChildren();
+    if (agendamentos.length === 0) {
+        mostrarListaVazia(lista, mensagem);
         return;
     }
 
-    proximos.slice(0, 5).forEach(item => {
+    agendamentos.forEach(item => {
         const linha = document.createElement("div");
         const detalhes = document.createElement("div");
         const cliente = document.createElement("strong");
         const servico = document.createElement("span");
         const whatsapp = document.createElement("small");
         linha.className = "proximo-atendimento-item";
-        cliente.textContent = item.nome || "Cliente";
-        servico.textContent = `${item.servico || "Servico"} - ${formatarData(item.data)} as ${item.horario}`;
+        const horario = item.horario || "Horário não informado";
+        const momento = mostrarData ? `${formatarData(item.data)} às ${horario}` : horario;
+        cliente.textContent = `${momento} · ${item.nome || "Cliente"}`;
+        servico.textContent = [item.servico, item.barbeiro_nome].filter(Boolean).join(" · ");
         whatsapp.textContent = item.whatsapp || "";
-        detalhes.appendChild(cliente);
-        detalhes.appendChild(servico);
-        linha.appendChild(detalhes);
-        linha.appendChild(whatsapp);
-        listaProximosAtendimentos.appendChild(linha);
+        detalhes.append(cliente, servico);
+        linha.append(detalhes, whatsapp);
+        lista.appendChild(linha);
     });
 }
 
 function renderizarDatasBloqueadas() {
     const sessao = sessaoPainel;
-    const datas = datasBloqueadasCache;
-
-    listaDatasBloqueadas.innerHTML = "";
-
-    if (datas.length === 0) {
-        listaDatasBloqueadas.innerHTML = '<p class="mensagem-vazia">Nenhuma data bloqueada.</p>';
+    listaDatasBloqueadas.replaceChildren();
+    if (datasBloqueadasCache.length === 0) {
+        mostrarListaVazia(listaDatasBloqueadas, "Nenhuma data bloqueada.");
         return;
     }
 
-    datas.forEach(data => {
+    datasBloqueadasCache.forEach(data => {
         const linha = document.createElement("div");
         const texto = document.createElement("span");
         const remover = document.createElement("button");
+        const chave = `bloqueio:${data}`;
 
         linha.className = "data-bloqueada-item";
         texto.textContent = formatarData(data);
         remover.type = "button";
-        remover.className = "btn-excluir pequeno";
         remover.textContent = "Remover";
+        remover.className = "btn-excluir pequeno";
+        remover.dataset.operacao = chave;
+        remover.disabled = operacaoPendente(sessao, chave);
+        remover.setAttribute("aria-label", `Remover bloqueio de ${formatarData(data)}`);
 
         remover.addEventListener("click", async () => {
-            if (!sessaoPainelAtiva(sessao)) return;
+            if (!sessaoPainelAtiva(sessao) || operacaoPendente(sessao, chave)) return;
             if (!confirm(`Remover bloqueio de ${formatarData(data)}?`)) return;
-
-            try {
-                await removerDataBloqueadaSupabase(sessao, data);
-            } catch (erro) {
-                console.error("Erro ao remover data bloqueada.", erro);
-                alert("Nao foi possivel remover a data bloqueada.");
-                return;
-            }
-
-            if (sessaoPainelAtiva(sessao)) renderizarDatasBloqueadas();
+            const removido = await executarOperacaoPainel(sessao, chave, statusPainel.bloqueios,
+                () => removerDataBloqueadaSupabase(sessao, data),
+                "Bloqueio removido.", "Não foi possível remover o bloqueio.");
+            if (removido && sessaoPainelAtiva(sessao)) renderizarDatasBloqueadas();
         });
 
-        linha.appendChild(texto);
-        linha.appendChild(remover);
+        linha.append(texto, remover);
         listaDatasBloqueadas.appendChild(linha);
+    });
+}
+
+function filtrarPorProfissional(agendamentos) {
+    const id = sessaoPainel?.tipo === "admin" ? profissionalAdmin.value : "";
+    return id ? agendamentos.filter(item => String(item.barbeiro_id) === id) : agendamentos;
+}
+
+function emOrdemCronologica(agendamentos) {
+    return [...agendamentos].sort((a, b) => {
+        const momentoA = `${a.data || ""} ${a.horario || ""}`;
+        const momentoB = `${b.data || ""} ${b.horario || ""}`;
+        return momentoA.localeCompare(momentoB);
     });
 }
 
@@ -1120,74 +1243,88 @@ function agendamentosFiltrados() {
     const termo = buscaAgendamento.value.trim().toLowerCase();
     const data = filtroData.value;
 
-    return agendamentosPrivados
-        .filter(agendamentoItem => {
-            const textoCompleto = [
-                agendamentoItem.nome,
-                agendamentoItem.servico,
-                agendamentoItem.whatsapp
-            ].join(" ").toLowerCase();
+    return emOrdemCronologica(filtrarPorProfissional(agendamentosPrivados).filter(item => {
+        const texto = [item.nome, item.servico, item.whatsapp].join(" ").toLowerCase();
+        return (!termo || texto.includes(termo)) && (!data || item.data === data);
+    }));
+}
 
-            const combinaTexto = !termo || textoCompleto.includes(termo);
-            const combinaData = !data || agendamentoItem.data === data;
+function criarAcoesAgendamento(sessao, item) {
+    const acoes = document.createElement("div");
+    acoes.className = "acoes-tabela";
 
-            return combinaTexto && combinaData;
-        })
-        .sort((a, b) => {
-            const dataA = `${a.data} ${a.horario}`;
-            const dataB = `${b.data} ${b.horario}`;
-            return dataA.localeCompare(dataB);
+    for (const [texto, classe, acao] of [
+        ["Editar", "btn-editar", () => abrirEdicao(item.id)],
+        ["Excluir", "btn-excluir pequeno", () => excluirAgendamento(sessao, item.id)]
+    ]) {
+        const botao = document.createElement("button");
+        botao.type = "button";
+        botao.className = classe;
+        botao.textContent = texto;
+        botao.dataset.id = item.id;
+        botao.dataset.operacao = `agendamento:${item.id}`;
+        botao.disabled = operacaoPendente(sessao, botao.dataset.operacao) ||
+            (classe === "btn-editar" && operacaoPendente(sessao, camposEdicao.dataset.operacao));
+        botao.setAttribute("aria-label", `${texto} agendamento de ${item.nome || "cliente"}`);
+        botao.addEventListener("click", () => {
+            if (sessaoPainelAtiva(sessao) && !operacaoPendente(sessao, botao.dataset.operacao)) acao();
         });
+        acoes.appendChild(botao);
+    }
+    return acoes;
 }
 
 function renderizarAgendamentos() {
     const sessao = sessaoPainel;
     const agendamentos = agendamentosFiltrados();
-
-    tabelaAgendamentos.innerHTML = "";
+    tabelaAgendamentos.replaceChildren();
+    cartoesAgendamentos.replaceChildren();
+    const semResultados = agendamentos.length === 0;
+    tabelaAgendamentos.closest(".tabela-admin-wrapper").hidden = semResultados;
+    cartoesAgendamentos.hidden = semResultados;
     mensagemAgendamentos.textContent = "";
-
-    if (agendamentos.length === 0) {
-        mensagemAgendamentos.textContent = "Nenhum agendamento encontrado.";
+    if (semResultados) {
+        mensagemAgendamentos.textContent = agendamentosPrivados.length
+            ? "Nenhum agendamento corresponde aos filtros."
+            : "Nenhum agendamento encontrado.";
         return;
     }
 
-    agendamentos.forEach(agendamentoItem => {
+    agendamentos.forEach(item => {
+        const detalhes = [
+            ["Serviço", item.servico],
+            ["Valor", item.preco || formatarMoeda(0)],
+            ["Data", formatarData(item.data)],
+            ["Horário", item.horario],
+            ["Barbeiro", item.barbeiro_nome],
+            ["WhatsApp", item.whatsapp]
+        ];
+
         const linha = document.createElement("tr");
-        const acoes = document.createElement("td");
-        const botaoEditar = document.createElement("button");
-        const botaoExcluir = document.createElement("button");
-
-        linha.appendChild(criarCelula(agendamentoItem.nome));
-        linha.appendChild(criarCelula(agendamentoItem.servico));
-        linha.appendChild(criarCelula(agendamentoItem.preco || formatarMoeda(0)));
-        linha.appendChild(criarCelula(formatarData(agendamentoItem.data)));
-        linha.appendChild(criarCelula(agendamentoItem.horario));
-        linha.appendChild(criarCelula(agendamentoItem.barbeiro_nome));
-        linha.appendChild(criarCelula(agendamentoItem.whatsapp));
-
-
-        acoes.className = "acoes-tabela";
-
-        botaoEditar.type = "button";
-        botaoEditar.className = "btn-editar";
-        botaoEditar.dataset.id = agendamentoItem.id;
-        botaoEditar.textContent = "Editar";
-        botaoEditar.addEventListener("click", () => {
-            if (sessaoPainelAtiva(sessao)) abrirEdicao(agendamentoItem.id);
-        });
-
-        botaoExcluir.type = "button";
-        botaoExcluir.className = "btn-excluir pequeno";
-        botaoExcluir.dataset.id = agendamentoItem.id;
-        botaoExcluir.textContent = "Excluir";
-        botaoExcluir.addEventListener("click", () => excluirAgendamento(sessao, agendamentoItem.id));
-
-        acoes.appendChild(botaoEditar);
-        acoes.appendChild(botaoExcluir);
-        linha.appendChild(acoes);
-
+        const celulaAcoes = document.createElement("td");
+        linha.appendChild(criarCelula(item.nome));
+        detalhes.forEach(([, valor]) => linha.appendChild(criarCelula(valor)));
+        celulaAcoes.appendChild(criarAcoesAgendamento(sessao, item));
+        linha.appendChild(celulaAcoes);
         tabelaAgendamentos.appendChild(linha);
+
+        const cartao = document.createElement("li");
+        const nome = document.createElement("strong");
+        const listaDetalhes = document.createElement("dl");
+        cartao.className = "admin-cartao-agendamento";
+        nome.textContent = item.nome || "Cliente";
+        listaDetalhes.className = "admin-detalhes-agendamento";
+        detalhes.forEach(([rotulo, valor]) => {
+            const campo = document.createElement("div");
+            const termo = document.createElement("dt");
+            const descricao = document.createElement("dd");
+            termo.textContent = rotulo;
+            descricao.textContent = valor || "-";
+            campo.append(termo, descricao);
+            listaDetalhes.appendChild(campo);
+        });
+        cartao.append(nome, listaDetalhes, criarAcoesAgendamento(sessao, item));
+        cartoesAgendamentos.appendChild(cartao);
     });
 }
 
@@ -1197,22 +1334,21 @@ function criarCelula(valor) {
     return celula;
 }
 
-function atualizarResumo(proximos) {
-    const agendamentos = agendamentosPrivados;
-    const hoje = dataAtualISO();
-    const mesAtual = mesAtualISO();
+function atualizarAgendaPainel(agora = new Date()) {
+    const agendamentos = emOrdemCronologica(filtrarPorProfissional(agendamentosPrivados));
+    const hoje = dataAtualISO(agora);
+    const mes = hoje.slice(0, 7);
+    const atendimentosHoje = agendamentos.filter(item => item.data === hoje);
+    const proximos = agendamentos.filter(item => item.data && item.horario &&
+        new Date(`${item.data}T${item.horario}:00`) > agora);
 
-    totalAgendamentos.textContent = agendamentos.filter(item => {
-        return item.data && item.data.slice(0, 7) === mesAtual;
-    }).length;
-    agendamentosHoje.textContent = agendamentos.filter(item => item.data === hoje).length;
-    proximoHorario.textContent = proximos.length ? proximos[0].horario : "--:--";
-}
-
-function atualizarAgendaPainel() {
-    const proximos = obterAtendimentosFuturos();
-    renderizarProximosAtendimentos(proximos);
-    atualizarResumo(proximos);
+    agendaAdminData.dateTime = hoje;
+    agendaAdminData.textContent = formatarData(hoje);
+    totalAgendamentos.textContent = agendamentos.filter(item => item.data?.slice(0, 7) === mes).length;
+    agendamentosHoje.textContent = atendimentosHoje.length;
+    proximoHorario.textContent = proximos[0]?.horario || "--:--";
+    renderizarListaAgenda(listaAtendimentosHoje, atendimentosHoje, "Nenhum atendimento hoje.");
+    renderizarListaAgenda(listaProximosAtendimentos, proximos.slice(0, 5), "Nenhum próximo atendimento.", true);
 }
 
 function renderizarFaturamento() {
@@ -1315,37 +1451,33 @@ btnExportarCsv.addEventListener("click", exportarAgendamentosCsv);
 btnLimparFiltros.addEventListener("click", () => {
     buscaAgendamento.value = "";
     filtroData.value = "";
+    profissionalAdmin.value = "";
+    atualizarAgendaPainel();
     renderizarAgendamentos();
 });
 
-formDataBloqueada.addEventListener("submit", async (e) => {
+formDataBloqueada.addEventListener("submit", async e => {
     e.preventDefault();
     const sessao = sessaoPainel;
-    if (!sessaoPainelAtiva(sessao)) return;
-
     const data = novaDataBloqueada.value;
-
-    if (!data || datasBloqueadasCache.includes(data)) {
-        novaDataBloqueada.value = "";
+    const chave = `bloqueio:${data}`;
+    if (!sessaoPainelAtiva(sessao) || !data || operacaoPendente(sessao, chave)) return;
+    if (datasBloqueadasCache.includes(data)) {
+        statusPainel.bloqueios.textContent = "Essa data já está bloqueada.";
         return;
     }
 
-    try {
-        await salvarDataBloqueadaSupabase(sessao, data);
-    } catch (erro) {
-        console.error("Erro ao bloquear data.", erro);
-        alert("Nao foi possivel bloquear a data.");
-        return;
-    }
-
-    if (!sessaoPainelAtiva(sessao)) return;
+    const salvo = await executarOperacaoPainel(sessao, chave, statusPainel.bloqueios,
+        () => salvarDataBloqueadaSupabase(sessao, data),
+        "Data bloqueada.", "Não foi possível bloquear a data.");
+    if (!salvo || !sessaoPainelAtiva(sessao)) return;
     novaDataBloqueada.value = "";
     renderizarDatasBloqueadas();
 });
 
 function abrirEdicao(id) {
+    if (camposEdicao.disabled) return;
     const agendamentoItem = agendamentosPrivados.find(item => item.id === id);
-
     if (!agendamentoItem) return;
 
     editarIndex.value = id;
@@ -1354,20 +1486,35 @@ function abrirEdicao(id) {
     editarServico.value = agendamentoItem.servico;
     editarData.value = agendamentoItem.data;
     editarHorario.value = agendamentoItem.horario;
+    camposEdicao.dataset.operacao = `agendamento:${id}`;
 
+    statusPainel.edicao.textContent = "";
     formEditar.style.display = "block";
-    formEditar.scrollIntoView({ behavior: "smooth" });
+    tituloEditarAgendamento.focus();
 }
 
-formEditar.addEventListener("submit", async (e) => {
+function fecharEdicao(id, restaurarFoco = true) {
+    formEditar.style.display = "none";
+    formEditar.reset();
+    delete camposEdicao.dataset.operacao;
+    statusPainel.edicao.textContent = "";
+
+    if (restaurarFoco && secaoAdmin === "painel-agendamentos") {
+        const botao = [...areaAdmin.querySelectorAll(".btn-editar")].find(item =>
+            item.dataset.id === id && item.getClientRects().length > 0);
+        (botao || document.getElementById("titulo-agendamentos-admin")).focus();
+    }
+}
+
+formEditar.addEventListener("submit", async e => {
     e.preventDefault();
 
     const sessao = sessaoPainel;
     if (!sessaoPainelAtiva(sessao)) return;
     const agendamentoItem = agendamentosPrivados.find(item => String(item.id) === editarIndex.value);
+    if (!agendamentoItem || !formEditar.reportValidity()) return;
 
-    if (!agendamentoItem) return;
-
+    const id = agendamentoItem.id;
     const agendamentoAtualizado = {
         nome: editarNome.value.trim(),
         whatsapp: editarWhatsapp.value.trim(),
@@ -1376,39 +1523,34 @@ formEditar.addEventListener("submit", async (e) => {
         horario: editarHorario.value
     };
 
-    try {
-        if (!await atualizarAgendamentoSupabase(sessao, agendamentoItem.id, agendamentoAtualizado) ||
-            !sessaoPainelAtiva(sessao)) return;
-    } catch (erro) {
-        console.error("Erro ao editar agendamento.", erro);
-        alert("Nao foi possivel editar o agendamento.");
-        return;
-    }
+    const salvo = await executarOperacaoPainel(sessao, `agendamento:${id}`, statusPainel.edicao,
+        () => atualizarAgendamentoSupabase(sessao, id, agendamentoAtualizado),
+        "Agendamento atualizado.", "Não foi possível editar o agendamento.");
+    if (!salvo || !sessaoPainelAtiva(sessao)) return;
 
-    formEditar.style.display = "none";
     renderizarAgendamentos();
     atualizarAgendaPainel();
     renderizarFaturamento();
+    statusPainel.agendamentos.textContent = "Agendamento atualizado.";
+    fecharEdicao(String(id));
 });
 
 btnCancelarEdicao.addEventListener("click", () => {
-    formEditar.style.display = "none";
-    formEditar.reset();
+    if (!camposEdicao.disabled) fecharEdicao(editarIndex.value);
 });
 
 async function excluirAgendamento(sessao, id) {
-    if (!sessaoPainelAtiva(sessao)) return;
+    const chave = `agendamento:${id}`;
+    if (!sessaoPainelAtiva(sessao) || operacaoPendente(sessao, chave)) return;
     if (!agendamentosPrivados.some(item => item.id === id)) return;
     if (!confirm("Deseja realmente excluir este agendamento?")) return;
 
-    try {
-        if (!await excluirAgendamentoSupabase(sessao, id) || !sessaoPainelAtiva(sessao)) return;
-    } catch (erro) {
-        console.error("Erro ao excluir agendamento.", erro);
-        alert("Nao foi possivel excluir o agendamento.");
-        return;
-    }
+    const removido = await executarOperacaoPainel(sessao, chave, statusPainel.agendamentos,
+        () => excluirAgendamentoSupabase(sessao, id),
+        "Agendamento excluído.", "Não foi possível excluir o agendamento.");
+    if (!removido || !sessaoPainelAtiva(sessao)) return;
 
+    if (editarIndex.value === String(id)) fecharEdicao(String(id), false);
     renderizarAgendamentos();
     atualizarAgendaPainel();
     renderizarFaturamento();

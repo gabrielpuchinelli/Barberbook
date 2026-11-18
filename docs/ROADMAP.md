@@ -30,10 +30,11 @@
 - [ ] Validar o fluxo e a concorrência com um projeto Supabase de teste após a auditoria.
 
 ## Fase 3 — Painel administrativo renovado
-- [ ] Organizar navegação e seções do painel.
-- [ ] Modernizar indicadores, lista/agenda e filtros.
-- [ ] Preservar operações de edição, exclusão, bloqueios e CSV.
-- [ ] Verificar permissões de administrador e barbeiro.
+- [x] Organizar a navegação mobile-first com Agenda, Agendamentos, Disponibilidade e Faturamento.
+- [x] Exibir os atendimentos de hoje e os próximos, com atualização automática na virada do dia.
+- [x] Compartilhar os filtros entre cartões, tabela e CSV e preservar edição, exclusão e controles de disponibilidade.
+- [x] Testar os fluxos administrativos com permissões e requisições simuladas a 320, 360, 375, 390 e 1200 px. Reexecutar a regressão do agendamento público.
+- [ ] Verificar permissões e concorrência com contas de administrador e barbeiro em um projeto Supabase de teste.
 
 ## Fase 4 — Preparação comercial
 - [ ] Parametrizar nome, logo, contato, serviços, preços e horários por instalação.

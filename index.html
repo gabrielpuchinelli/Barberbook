@@ -154,7 +154,7 @@
 
 <section id="area-login" style="display: none;">
     <form id="form-login" class="login-box">
-        <h2>Login do Administrador</h2>
+        <h2>Acesso ao painel</h2>
 
         <label for="usuario">E-mail</label>
         <input type="email" id="usuario" autocomplete="username" required>
@@ -164,208 +164,206 @@
 
         <button type="submit">Entrar</button>
 
-        <p id="erro-login"></p>
+        <p id="status-login-admin" class="admin-status" role="status"></p>
+        <p id="erro-login" role="alert"></p>
     </form>
 </section>
 
-<section id="area-admin" style="display: none;">
+<section id="area-admin" style="display: none;" aria-label="Painel administrativo">
     <div class="admin-topo">
         <div>
-            <span class="admin-etiqueta">Painel administrativo</span>
-            <h2>Visão geral da barbearia</h2>
+            <h2>Painel administrativo</h2>
             <p id="admin-saudacao" class="admin-saudacao">Bem-vindo ao painel.</p>
-            <p>Acompanhe agendamentos, disponibilidade e resultados em um só lugar.</p>
         </div>
-
-        <button id="btn-voltar" class="btn-secundario">Sair do painel</button>
+        <button id="btn-voltar" class="btn-secundario" type="button">Sair do painel</button>
     </div>
 
-    <div class="admin-resumo">
-        <div class="resumo-card">
-            <span>Agendamentos no mês</span>
-            <strong id="total-agendamentos">0</strong>
-        </div>
+    <nav class="admin-navegacao" aria-label="Seções do painel">
+        <button type="button" class="btn-secundario" data-secao-admin="painel-agenda" aria-controls="painel-agenda" aria-current="true">Agenda</button>
+        <button type="button" class="btn-secundario" data-secao-admin="painel-agendamentos" aria-controls="painel-agendamentos">Agendamentos</button>
+        <button type="button" class="btn-secundario" data-secao-admin="painel-disponibilidade" aria-controls="painel-disponibilidade">Disponibilidade</button>
+        <button type="button" class="btn-secundario" data-secao-admin="painel-faturamento" aria-controls="painel-faturamento">Faturamento</button>
+    </nav>
 
-        <div class="resumo-card">
-            <span>Atendimentos hoje</span>
-            <strong id="agendamentos-hoje">0</strong>
-        </div>
-
-        <div class="resumo-card">
-            <span>Próximo horário</span>
-            <strong id="proximo-horario">--:--</strong>
-        </div>
+    <div id="filtro-profissional-admin" class="campo admin-filtro-profissional" hidden>
+        <label for="profissional-admin">Profissional</label>
+        <select id="profissional-admin"></select>
     </div>
 
-    <div class="admin-card faturamento-card">
-        <div class="admin-card-cabecalho linha">
-            <div>
-                <h3>Faturamento</h3>
-                <p>Acompanhe o resultado dos atendimentos por mes.</p>
+    <section id="painel-agenda" class="admin-secao" aria-labelledby="titulo-agenda-admin">
+        <h3 id="titulo-agenda-admin" tabindex="-1">Agenda</h3>
+
+        <div class="admin-resumo">
+            <div class="resumo-card">
+                <span>Atendimentos hoje</span>
+                <strong id="agendamentos-hoje">0</strong>
             </div>
-
-            <input type="month" id="filtro-mes-faturamento" class="input-mes-faturamento">
-        </div>
-
-        <div class="faturamento-resumo">
-            <div class="faturamento-item destaque">
-                <span>Faturamento do mes</span>
-                <strong id="faturamento-mes">R$ 0,00</strong>
+            <div class="resumo-card">
+                <span>Próximo horário</span>
+                <strong id="proximo-horario">--:--</strong>
             </div>
-
-            <div class="faturamento-item">
-                <span>Atendimentos</span>
-                <strong id="atendimentos-mes">0</strong>
-            </div>
-
-            <div class="faturamento-item">
-                <span>Ticket medio</span>
-                <strong id="ticket-medio">R$ 0,00</strong>
+            <div class="resumo-card">
+                <span>Agendamentos no mês</span>
+                <strong id="total-agendamentos">0</strong>
             </div>
         </div>
 
-        <div class="faturamento-servicos" id="faturamento-servicos"></div>
-    </div>
-
-    <div class="admin-grid">
-        <div class="admin-card">
-            <div class="admin-card-cabecalho">
-                <h3>Dias disponiveis</h3>
-                <p>Escolha quais dias podem receber agendamentos.</p>
+        <div class="admin-grade-agenda">
+            <div class="admin-card">
+                <h4>Atendimentos de hoje <time id="agenda-admin-data"></time></h4>
+                <div id="lista-atendimentos-hoje"></div>
             </div>
-
-            <div class="dias-admin">
-                <label><input type="checkbox" class="checkbox-dia" data-dia="1"> Segunda</label>
-                <label><input type="checkbox" class="checkbox-dia" data-dia="2"> Terca</label>
-                <label><input type="checkbox" class="checkbox-dia" data-dia="3"> Quarta</label>
-                <label><input type="checkbox" class="checkbox-dia" data-dia="4"> Quinta</label>
-                <label><input type="checkbox" class="checkbox-dia" data-dia="5"> Sexta</label>
-                <label><input type="checkbox" class="checkbox-dia" data-dia="6"> Sabado</label>
-                <label><input type="checkbox" class="checkbox-dia" data-dia="0"> Domingo</label>
+            <div class="admin-card">
+                <h4>Próximos atendimentos</h4>
+                <div id="lista-proximos-atendimentos" class="lista-proximos-atendimentos"></div>
             </div>
         </div>
+    </section>
 
-        <div class="admin-card">
-            <div class="admin-card-cabecalho">
-                <h3>Horarios disponiveis</h3>
-                <p>Adicione, remova ou desative horarios da agenda.</p>
+    <section id="painel-agendamentos" class="admin-secao" aria-labelledby="titulo-agendamentos-admin" hidden>
+        <h3 id="titulo-agendamentos-admin" tabindex="-1">Agendamentos</h3>
+        <div class="admin-card admin-card-lista">
+            <div class="filtros-admin">
+                <div class="campo">
+                    <label for="busca-agendamento">Buscar cliente, serviço ou WhatsApp</label>
+                    <input type="search" id="busca-agendamento">
+                </div>
+                <div class="campo">
+                    <label for="filtro-data">Data do atendimento</label>
+                    <input type="date" id="filtro-data">
+                </div>
             </div>
-
-            <form id="form-horario" class="form-horario">
-                <input type="time" id="novo-horario" required>
-                <button type="submit">Adicionar</button>
-            </form>
-
-            <div id="lista-horarios-admin" class="lista-horarios-admin"></div>
-        </div>
-    </div>
-
-    <div class="admin-grid">
-        <div class="admin-card">
-            <div class="admin-card-cabecalho">
-                <h3>Proximos atendimentos</h3>
-                <p>Veja rapidamente quem esta chegando na agenda.</p>
-            </div>
-
-            <div id="lista-proximos-atendimentos" class="lista-proximos-atendimentos"></div>
-        </div>
-
-        <div class="admin-card">
-            <div class="admin-card-cabecalho">
-                <h3>Datas bloqueadas</h3>
-                <p>Bloqueie feriados, folgas ou compromissos especificos.</p>
-            </div>
-
-            <form id="form-data-bloqueada" class="form-data-bloqueada">
-                <input type="date" id="nova-data-bloqueada" required>
-                <button type="submit">Bloquear</button>
-            </form>
-
-            <div id="lista-datas-bloqueadas" class="lista-datas-bloqueadas"></div>
-        </div>
-    </div>
-
-    <div class="admin-card admin-card-lista">
-        <div class="admin-card-cabecalho linha">
-            <div>
-                <h3>Agendamentos</h3>
-                <p>Consulte, edite ou exclua os atendimentos salvos.</p>
-            </div>
-
             <div class="acoes-cabecalho">
-                <button id="btn-exportar-csv" class="btn-secundario">Exportar CSV</button>
-                <button id="btn-limpar-filtros" class="btn-secundario">Limpar busca</button>
+                <button id="btn-exportar-csv" class="btn-secundario" type="button">Exportar CSV</button>
+                <button id="btn-limpar-filtros" class="btn-secundario" type="button">Limpar filtros</button>
             </div>
         </div>
 
-        <div class="filtros-admin">
-            <input type="search" id="busca-agendamento" placeholder="Buscar por nome, servico ou WhatsApp">
-            <input type="date" id="filtro-data">
-        </div>
+        <form id="form-editar" class="admin-card form-editar" style="display: none;">
+            <h4 id="titulo-editar-agendamento" tabindex="-1">Editar agendamento</h4>
+            <fieldset id="campos-edicao-agendamento">
+                <input type="hidden" id="editar-index">
+                <div class="form-editar-grid">
+                    <div class="campo">
+                        <label for="editar-nome">Nome</label>
+                        <input type="text" id="editar-nome" required>
+                    </div>
+                    <div class="campo">
+                        <label for="editar-whatsapp">WhatsApp</label>
+                        <input type="tel" id="editar-whatsapp" inputmode="tel" required>
+                    </div>
+                    <div class="campo">
+                        <label for="editar-servico">Serviço</label>
+                        <input type="text" id="editar-servico" required>
+                    </div>
+                    <div class="campo">
+                        <label for="editar-data">Data</label>
+                        <input type="date" id="editar-data" required>
+                    </div>
+                    <div class="campo">
+                        <label for="editar-horario">Horário</label>
+                        <input type="time" id="editar-horario" required>
+                    </div>
+                </div>
+                <div class="admin-acoes">
+                    <button type="submit" class="btn-confirmar">Salvar alterações</button>
+                    <button type="button" id="btn-cancelar-edicao" class="btn-secundario">Cancelar</button>
+                </div>
+            </fieldset>
+            <p id="status-edicao-admin" class="admin-status" role="status"></p>
+        </form>
 
-        <div class="tabela-admin-wrapper">
-            <table class="tabela-admin">
-                <thead>
-                    <tr>
-                        <th>Cliente</th>
-                        <th>Servico</th>
-                        <th>Valor</th>
-                        <th>Data</th>
-                        <th>Horario</th>
-                        <th>Barbeiro</th>
-                        <th>WhatsApp</th>
-                        <th>Acoes</th>
-                    </tr>
-
-
-                </thead>
-                <tbody id="tabela-agendamentos"></tbody>
-            </table>
-        </div>
-
-        <p id="mensagem-agendamentos" class="mensagem-vazia"></p>
-    </div>
-
-    <form id="form-editar" class="admin-card form-editar" style="display: none;">
-        <div class="admin-card-cabecalho linha">
-            <div>
-                <h3>Editar agendamento</h3>
-                <p>Atualize os dados do atendimento selecionado.</p>
-            </div>
-            <button type="button" id="btn-cancelar-edicao" class="btn-secundario">Cancelar</button>
-        </div>
-
-        <input type="hidden" id="editar-index">
-
-        <div class="form-editar-grid">
-            <div class="campo">
-                <label for="editar-nome">Nome</label>
-                <input type="text" id="editar-nome" required>
-            </div>
-
-            <div class="campo">
-                <label for="editar-whatsapp">WhatsApp</label>
-                <input type="tel" id="editar-whatsapp" required>
-            </div>
-
-            <div class="campo">
-                <label for="editar-servico">Servico</label>
-                <input type="text" id="editar-servico" required>
-            </div>
-
-            <div class="campo">
-                <label for="editar-data">Data</label>
-                <input type="date" id="editar-data" required>
-            </div>
-
-            <div class="campo">
-                <label for="editar-horario">Horario</label>
-                <input type="time" id="editar-horario" required>
+        <div class="admin-card">
+            <p id="status-agendamentos-admin" class="admin-status" role="status"></p>
+            <p id="mensagem-agendamentos" class="mensagem-vazia" role="status"></p>
+            <ul id="cartoes-agendamentos" class="admin-cartoes" aria-label="Lista de agendamentos"></ul>
+            <div class="tabela-admin-wrapper" role="region" aria-label="Tabela de agendamentos" tabindex="0">
+                <table class="tabela-admin">
+                    <thead>
+                        <tr>
+                            <th scope="col">Cliente</th>
+                            <th scope="col">Serviço</th>
+                            <th scope="col">Valor</th>
+                            <th scope="col">Data</th>
+                            <th scope="col">Horário</th>
+                            <th scope="col">Barbeiro</th>
+                            <th scope="col">WhatsApp</th>
+                            <th scope="col">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-agendamentos"></tbody>
+                </table>
             </div>
         </div>
+    </section>
 
-        <button type="submit" class="btn-confirmar">Salvar alteracoes</button>
-    </form>
+    <section id="painel-disponibilidade" class="admin-secao" aria-labelledby="titulo-disponibilidade-admin" hidden>
+        <h3 id="titulo-disponibilidade-admin" tabindex="-1">Disponibilidade</h3>
+        <div class="admin-grade-disponibilidade">
+            <div class="admin-card">
+                <h4>Dias disponíveis</h4>
+                <div class="dias-admin">
+                    <label><input type="checkbox" class="checkbox-dia" data-dia="1"> Segunda</label>
+                    <label><input type="checkbox" class="checkbox-dia" data-dia="2"> Terça</label>
+                    <label><input type="checkbox" class="checkbox-dia" data-dia="3"> Quarta</label>
+                    <label><input type="checkbox" class="checkbox-dia" data-dia="4"> Quinta</label>
+                    <label><input type="checkbox" class="checkbox-dia" data-dia="5"> Sexta</label>
+                    <label><input type="checkbox" class="checkbox-dia" data-dia="6"> Sábado</label>
+                    <label><input type="checkbox" class="checkbox-dia" data-dia="0"> Domingo</label>
+                </div>
+                <p id="status-dias-admin" class="admin-status" role="status"></p>
+            </div>
+            <div class="admin-card">
+                <h4>Horários disponíveis</h4>
+                <form id="form-horario" class="form-horario">
+                    <div class="campo">
+                        <label for="novo-horario">Novo horário</label>
+                        <input type="time" id="novo-horario" required>
+                    </div>
+                    <button type="submit">Adicionar</button>
+                </form>
+                <p id="status-horarios-admin" class="admin-status" role="status"></p>
+                <div id="lista-horarios-admin" class="lista-horarios-admin"></div>
+            </div>
+            <div class="admin-card">
+                <h4>Datas bloqueadas</h4>
+                <form id="form-data-bloqueada" class="form-data-bloqueada">
+                    <div class="campo">
+                        <label for="nova-data-bloqueada">Data a bloquear</label>
+                        <input type="date" id="nova-data-bloqueada" required>
+                    </div>
+                    <button type="submit">Bloquear</button>
+                </form>
+                <p id="status-bloqueios-admin" class="admin-status" role="status"></p>
+                <div id="lista-datas-bloqueadas" class="lista-datas-bloqueadas"></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="painel-faturamento" class="admin-secao" aria-labelledby="titulo-faturamento-admin" hidden>
+        <h3 id="titulo-faturamento-admin" tabindex="-1">Faturamento</h3>
+        <div class="admin-card faturamento-card">
+            <div class="campo faturamento-periodo">
+                <label for="filtro-mes-faturamento">Mês de referência</label>
+                <input type="month" id="filtro-mes-faturamento" class="input-mes-faturamento">
+            </div>
+            <div class="faturamento-resumo">
+                <div class="faturamento-item destaque">
+                    <span>Faturamento do mês</span>
+                    <strong id="faturamento-mes">R$ 0,00</strong>
+                </div>
+                <div class="faturamento-item">
+                    <span>Atendimentos</span>
+                    <strong id="atendimentos-mes">0</strong>
+                </div>
+                <div class="faturamento-item">
+                    <span>Ticket médio</span>
+                    <strong id="ticket-medio">R$ 0,00</strong>
+                </div>
+            </div>
+            <div class="faturamento-servicos" id="faturamento-servicos"></div>
+        </div>
+    </section>
 </section>
 
 <footer>

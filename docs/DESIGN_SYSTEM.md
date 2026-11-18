@@ -30,7 +30,9 @@ O fluxo apresenta uma etapa por vez, de serviço a profissional, data e horário
 Datas bloqueadas e horários ocupados têm rótulos próprios. A confirmação apresenta serviço, preço, profissional, data e horário antes dos campos de contato. Durante o envio, um estado textual informa que a reserva está sendo confirmada.
 
 ## Painel
-Priorizar visão geral, agenda, agendamentos, disponibilidade e configurações. Manter os IDs e eventos existentes até migração controlada.
+A navegação abre em **Agenda**, com listas separadas para hoje e próximos atendimentos. **Agendamentos**, **Disponibilidade** e **Faturamento** ficam em seções próprias. Ao mudar de seção, o foco vai para o título.
+
+Em telas estreitas, cada agendamento fica em um cartão com ações visíveis e alvos de pelo menos 44 × 44 px. Em telas largas, a tabela usa o mesmo resultado filtrado dos cartões e do CSV. A edição move o foco para o formulário e retorna à ação de editar, ou ao título da seção se o registro sair do filtro.
 
 ## Acessibilidade e responsividade
 - Manter contraste adequado e foco por teclado.

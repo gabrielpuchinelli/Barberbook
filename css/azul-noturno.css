@@ -399,3 +399,259 @@ footer{background:#0a1320;border-top:1px solid var(--bb-border);padding:35px 20p
 @media(max-width:900px){.admin-resumo{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-grid,.faturamento-resumo{grid-template-columns:1fr}.filtros-admin{grid-template-columns:1fr}}
 @media(max-width:768px){header{padding:12px 20px;gap:12px}.logo img{width:54px;height:54px}.logo h1{font-size:1.55rem}.admin-resumo{grid-template-columns:1fr}.admin-card,.login-box{padding:20px}.form-horario,.form-data-bloqueada{grid-template-columns:1fr}.form-horario button,.form-data-bloqueada button,.btn-secundario,.input-mes-faturamento{width:auto;max-width:none}.filtros-admin{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}button{transition:none}}
+
+#area-admin,
+#area-login {
+    width: min(1180px, calc(100% - 24px));
+    margin: 16px auto 40px;
+}
+
+#area-admin [hidden] {
+    /* A visibilidade definida pelo HTML prevalece sobre os layouts responsivos. */
+    display: none !important;
+}
+
+#area-admin :is(button, select, input:not([type="checkbox"]):not([type="hidden"])),
+#area-login :is(button, input),
+#area-admin :is(.dias-admin label, .horario-admin-item label) {
+    min-width: 44px;
+    min-height: 44px;
+}
+
+#area-admin :is(input:not([type="checkbox"]):not([type="hidden"]), select),
+#area-login input {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 16px;
+}
+
+#area-admin :is(button, input, select, [tabindex]):focus-visible,
+#area-admin :is(h3, h4):focus,
+#area-login :is(button, input):focus-visible {
+    outline: 3px solid var(--bb-accent-strong);
+    outline-offset: 2px;
+}
+
+#area-admin button:disabled {
+    cursor: wait;
+    opacity: .68;
+    transform: none;
+}
+
+#area-admin .admin-topo {
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 0;
+}
+
+#area-admin .admin-topo h2 {
+    margin: 0 0 4px;
+    font-size: clamp(1.35rem, 4vw, 2.3rem);
+}
+
+.admin-navegacao,
+.admin-grade-agenda,
+.admin-grade-disponibilidade,
+.admin-cartoes {
+    display: grid;
+    min-width: 0;
+    gap: 10px;
+}
+
+.admin-navegacao {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 14px;
+}
+
+.admin-navegacao button {
+    padding-inline: 6px;
+    overflow-wrap: anywhere;
+}
+
+.admin-navegacao [aria-current="true"] {
+    color: var(--bb-text);
+    border-color: var(--bb-accent);
+    box-shadow: inset 0 -3px var(--bb-accent);
+}
+
+.admin-secao {
+    min-width: 0;
+}
+
+.admin-secao h3,
+.admin-secao h4 {
+    margin: 0 0 10px;
+    color: var(--bb-text);
+}
+
+.admin-filtro-profissional,
+.faturamento-periodo {
+    max-width: 340px;
+    margin-bottom: 12px;
+}
+
+.admin-filtro-profissional select {
+    padding: 8px 10px;
+    border: 1px solid var(--bb-border);
+    border-radius: 10px;
+    background: var(--bb-surface-2);
+    color: var(--bb-text);
+}
+
+#area-admin .admin-resumo {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+#area-admin .resumo-card {
+    padding: 8px;
+    border-radius: 10px;
+}
+
+#area-admin .resumo-card span {
+    margin-bottom: 4px;
+    font-size: .82rem;
+    line-height: 1.25;
+}
+
+#area-admin .resumo-card strong {
+    font-size: clamp(1rem, 3vw, 1.85rem);
+    overflow-wrap: anywhere;
+}
+
+#area-admin .admin-card {
+    min-width: 0;
+    padding: 12px;
+}
+
+#area-admin .campo {
+    min-width: 0;
+    margin-bottom: 10px;
+    gap: 5px;
+}
+
+#area-admin .admin-status,
+#area-login .admin-status,
+#area-login #erro-login,
+#area-admin .mensagem-vazia {
+    min-height: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+#area-admin .admin-status:not(:empty),
+#area-admin .mensagem-vazia:not(:empty) {
+    margin-block: 8px;
+}
+
+.admin-cartoes {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.admin-cartao-agendamento,
+#lista-atendimentos-hoje .proximo-atendimento-item {
+    padding: 10px;
+    background: var(--bb-surface-2);
+    border: 1px solid var(--bb-border);
+    border-radius: 10px;
+}
+
+.admin-cartao-agendamento,
+.proximo-atendimento-item {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+#lista-atendimentos-hoje {
+    display: grid;
+    gap: 8px;
+}
+
+.admin-detalhes-agendamento {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+    margin: 8px 0;
+}
+
+.admin-detalhes-agendamento dt {
+    color: var(--bb-muted);
+    font-size: .85rem;
+}
+
+.admin-detalhes-agendamento dd {
+    margin: 0;
+}
+
+#area-admin .tabela-admin-wrapper {
+    display: none;
+}
+
+#area-admin .acoes-cabecalho,
+.admin-acoes,
+.admin-cartao-agendamento .acoes-tabela {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 8px;
+    min-width: 0;
+}
+
+#area-admin .admin-acoes .btn-confirmar {
+    width: auto;
+}
+
+#form-editar {
+    margin-bottom: 12px;
+}
+
+#form-editar fieldset {
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+}
+
+#area-admin .lista-horarios-admin {
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+}
+
+#area-admin .horario-admin-item,
+#area-admin .data-bloqueada-item {
+    flex-wrap: wrap;
+}
+
+@media (min-width: 640px) {
+    .admin-navegacao {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    #area-admin .admin-card {
+        padding: 18px;
+    }
+
+    .admin-grade-agenda,
+    .admin-grade-disponibilidade {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 900px) {
+    #area-admin .tabela-admin-wrapper {
+        display: block;
+    }
+
+    #area-admin .admin-cartoes {
+        display: none;
+    }
+
+    .admin-grade-disponibilidade {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}

@@ -29,6 +29,12 @@ Produto distribuído por **instalação individual por cliente**. A proposta é 
 - O fluxo público permite um envio por vez e bloqueia mudanças de seleção e etapa durante a requisição. A trava é local à tela. As regras do servidor determinam conflitos entre abas e dispositivos.
 - O painel confirma a sessão antes de ativar a interface e antes de enviar cada escrita. A saída ou a troca de sessão limpa os dados e controles do painel, invalida o login pendente e cancela as requisições de escrita no navegador. Respostas antigas são descartadas. Uma escrita já recebida pelo servidor pode ser concluída. A consulta de barbeiro usa filtro obrigatório por ID, com validação de inteiros positivos e UUIDs.
 
+## Painel administrativo
+
+- Após o login, o painel abre na Agenda. A lista de hoje e os cinco próximos atendimentos usam os registros autorizados em memória e o relógio local do navegador. O painel recalcula essas listas na mudança de minuto e quando a janela ou aba volta a ficar ativa.
+- O filtro por profissional aparece para administradores e atua sobre os registros já autorizados. Busca, data e profissional usam a mesma lógica nos cartões, na tabela e no CSV. O faturamento mantém o filtro por mês e o escopo de registros da sessão.
+- Os controles existentes de dias, horários e datas bloqueadas continuam usando a configuração geral da agenda. Escritas pendentes bloqueiam novas operações sobre o mesmo item na sessão. Em caso de falha, o painel mantém os dados digitados ou restaura o controle ao último valor confirmado.
+
 ## Pendências da auditoria do Supabase
 
 - Confirmar que a view implantada fornece `data`, `horario` e `barbeiro_id` e verificar quais outras colunas e linhas os papéis públicos podem acessar. A seleção de colunas no frontend não altera a exposição da view pelo banco. Se faltar algum dos três campos, a disponibilidade fica indisponível até a regularização do contrato.
