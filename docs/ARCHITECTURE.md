@@ -10,7 +10,7 @@ Produto distribuído por **instalação individual por cliente**. A proposta é 
 - `js/script.js`: fluxo de agendamento, persistência, autenticação, permissões, disponibilidade e painel.
 - `js/agendamento.js` e `js/admin.js`: scripts adicionais de pequeno porte; verificar seus papéis antes de reorganizar.
 - `supabase-schema.sql`: representação **parcial/desatualizada** do banco, não migração completa validada.
-- `localStorage`: o fluxo público guarda as seleções de serviço, preço, profissional e data. O horário selecionado fica em memória e é descartado a cada nova consulta de disponibilidade. O frontend remove as chaves legadas `agendamentos`, `barbeiro_nome` e `horario` ao iniciar.
+- O agendamento público mantém serviço, preço, profissional, data e horário em memória. O navegador descarta a seleção ao recarregar a página e remove as chaves legadas `agendamentos`, `barbeiro_nome`, `servico`, `preco`, `barbeiro_id`, `data` e `horario` do `localStorage` ao iniciar. Nome e WhatsApp ficam apenas no formulário até a confirmação.
 
 ## Recursos Supabase referenciados pelo frontend
 - Tabelas: `agendamentos`, `barbeiros`, `dias_disponiveis`, `horarios_disponiveis`, `datas_bloqueadas`.
@@ -24,6 +24,9 @@ Produto distribuído por **instalação individual por cliente**. A proposta é 
 
 - O cálculo de ocupação compara `data`, `horario` e `barbeiro_id`. Esses são os únicos campos solicitados de `agendamentos_publicos`. No fluxo público, nome e WhatsApp do cliente são enviados na criação da reserva. No painel, esses dados continuam disponíveis para consulta e edição conforme o perfil.
 - O fluxo público carrega a ocupação, os profissionais ativos e a configuração da agenda do Supabase. Se qualquer consulta falhar, as opções ficam indisponíveis e a interface permite tentar novamente. Uma configuração vazia não é substituída por dias e horários padrão.
+- O agendamento compara a data e a hora do atendimento com o relógio local do navegador. Horários iniciados ou passados ficam indisponíveis na listagem e a regra é verificada novamente antes do envio.
+- Voltar entre etapas mantém as escolhas válidas. Trocar serviço descarta profissional, data e horário. Trocar profissional descarta data e horário. Trocar data ou recarregar a disponibilidade descarta o horário. Uma falha no envio preserva os dados do formulário e exige nova seleção depois de recarregar a disponibilidade.
+- O fluxo público permite um envio por vez e bloqueia mudanças de seleção e etapa durante a requisição. A trava é local à tela. As regras do servidor determinam conflitos entre abas e dispositivos.
 - O painel confirma a sessão antes de ativar a interface e antes de enviar cada escrita. A saída ou a troca de sessão limpa os dados e controles do painel, invalida o login pendente e cancela as requisições de escrita no navegador. Respostas antigas são descartadas. Uma escrita já recebida pelo servidor pode ser concluída. A consulta de barbeiro usa filtro obrigatório por ID, com validação de inteiros positivos e UUIDs.
 
 ## Pendências da auditoria do Supabase

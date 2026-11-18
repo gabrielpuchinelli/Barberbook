@@ -6,18 +6,396 @@ header{min-height:88px;padding:12px max(24px,calc((100vw - 1180px)/2));backgroun
 .logo img{width:66px;height:66px}.logo h1{font-size:1.65rem;letter-spacing:-.05em}.logo span,.titulo-servicos h2,.card-servico h3,.campo label,#dados-cliente h2,.login-box h2,.admin-topo h2,.footer-conteudo h3{color:var(--bb-accent-strong)}
 .btn-admin,.btn-confirmar,.login-box button,.form-horario button,.form-data-bloqueada button{background:var(--bb-accent);color:#091727;border:1px solid transparent;border-radius:12px;padding:12px 20px;font-weight:750;box-shadow:0 8px 24px rgba(53,122,172,.18)}
 .btn-admin:hover,.btn-confirmar:hover,.login-box button:hover,.form-horario button:hover,.form-data-bloqueada button:hover{background:var(--bb-accent-strong);transform:translateY(-2px)}
-#area-cliente{width:min(1180px,calc(100% - 40px));margin:0 auto;padding-bottom:70px}
-.titulo-servicos{margin:60px auto 32px;padding:0}.titulo-servicos .eyebrow{display:inline-block;margin-bottom:12px;color:var(--bb-accent-strong);font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;font-weight:800}.titulo-servicos h2{color:var(--bb-text);font-size:clamp(2rem,4.5vw,3.25rem);letter-spacing:-.055em;line-height:1.15;margin:0 0 16px}.titulo-servicos p{color:var(--bb-muted);font-size:1.06rem}
-.booking-steps{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:28px auto 32px;padding:0;list-style:none}.booking-steps li{border:1px solid var(--bb-border);border-radius:100px;padding:9px 16px;background:rgba(20,37,58,.65);color:var(--bb-muted);font-size:.85rem;font-weight:650}.booking-steps li:first-child{background:#214765;border-color:#427ca7;color:#f6fbff}
-.cards-servicos{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:16px;padding:0}.card-servico{width:100%;min-height:142px;text-align:left;padding:24px;background:linear-gradient(145deg,#1a3049,#122238);border:1px solid var(--bb-border);border-radius:var(--bb-radius);box-shadow:var(--bb-shadow)}.card-servico h3{font-size:1.06rem;margin-bottom:14px}.card-servico p{font-size:1.18rem;color:var(--bb-text);font-weight:750;margin:0}.card-servico:hover,.card-servico.selecionado{background:#214360;border-color:var(--bb-accent);box-shadow:0 0 0 1px rgba(104,169,212,.3),var(--bb-shadow)}
-#agendamento,#barbeiros{max-width:100%;margin:28px auto;padding:28px;background:rgba(20,37,58,.78);border:1px solid var(--bb-border);border-radius:var(--bb-radius);box-shadow:var(--bb-shadow)}#agendamento h2,#barbeiros h2,#area-horarios h2{font-size:1.35rem;letter-spacing:-.03em;color:var(--bb-text);margin:0 0 20px}#area-horarios{margin:30px auto 0}
-.dias-cliente,.horarios,.lista-barbeiros{justify-content:flex-start;gap:10px}.card-dia,.card-horario,.card-barbeiro{background:var(--bb-surface-2);border:1px solid var(--bb-border);border-radius:12px;color:var(--bb-text);box-shadow:none}.card-dia{width:132px;min-height:96px}.card-dia strong{font-size:1.12rem;color:var(--bb-accent-strong)}.card-dia span{color:var(--bb-muted)}.card-horario{min-width:94px;padding:13px}.card-barbeiro{min-width:160px;padding:18px}.card-dia:hover,.card-horario:hover,.card-barbeiro:hover{border-color:var(--bb-accent)}.card-dia.selecionado,.card-horario.selecionado,.card-barbeiro.selecionado{background:var(--bb-accent);border-color:var(--bb-accent);color:#081727}.card-dia.selecionado strong,.card-dia.selecionado span{color:#081727}.card-dia.indisponivel,.card-horario.indisponivel{background:#152235;color:#71869b;border-color:#273c53;opacity:.65}.card-dia.indisponivel strong,.card-dia.indisponivel span{color:#71869b}
-#dados-cliente{max-width:560px;margin:28px auto;padding:32px;background:var(--bb-surface);border:1px solid var(--bb-border);border-radius:var(--bb-radius);box-shadow:var(--bb-shadow)}.campo label{font-size:.9rem}
+#area-cliente {
+    width: min(1180px, calc(100% - 24px));
+    margin: 0 auto;
+    padding-block: 12px 40px;
+}
+
+.titulo-servicos {
+    margin: 8px auto 16px;
+    padding: 0;
+}
+
+.titulo-servicos .eyebrow {
+    display: inline-block;
+    margin-bottom: 4px;
+    color: var(--bb-accent-strong);
+    font-size: .8rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-weight: 800;
+}
+
+.titulo-servicos h2 {
+    margin: 0 0 8px;
+    color: var(--bb-text);
+    font-size: clamp(1.65rem, 4.5vw, 3.25rem);
+    line-height: 1.15;
+    letter-spacing: -.045em;
+}
+
+.titulo-servicos p {
+    color: var(--bb-muted);
+    font-size: 1rem;
+}
+
+.booking-steps {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 6px;
+    list-style: none;
+    background: var(--bb-bg);
+    border: 1px solid var(--bb-border);
+    border-radius: 12px;
+}
+
+.booking-steps li {
+    display: grid;
+    place-content: center;
+    padding: 6px 4px;
+    border: 1px solid var(--bb-border);
+    border-radius: 8px;
+    color: var(--bb-muted);
+    font-size: .9rem;
+    line-height: 1.3;
+    text-align: center;
+}
+
+.booking-steps li[aria-current="step"] {
+    border-color: var(--bb-accent);
+    background: var(--bb-surface-2);
+    color: var(--bb-text);
+    font-weight: 800;
+    box-shadow: inset 0 -3px var(--bb-accent);
+}
+
+.booking-steps li.etapa-concluida {
+    color: var(--bb-text);
+    border-style: dashed;
+}
+
+#area-cliente [hidden] {
+    display: none;
+}
+
+.navegacao-agendamento {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 12px auto;
+}
+
+.navegacao-agendamento #aviso-data {
+    order: 1;
+    flex-basis: 100%;
+}
+
+#area-cliente .aviso-data {
+    margin: 0;
+    min-height: 0;
+    color: var(--bb-text);
+}
+
+#area-cliente button,
+#area-cliente input,
+#btn-admin {
+    min-width: 44px;
+    min-height: 44px;
+}
+
+#area-cliente button {
+    touch-action: manipulation;
+}
+
+#area-cliente .btn-secundario {
+    max-width: 100%;
+}
+
+#area-cliente button:focus-visible,
+#area-cliente input:focus-visible,
+#area-cliente .titulo-etapa:focus {
+    outline: 3px solid var(--bb-accent-strong);
+    outline-offset: 3px;
+}
+
+#area-cliente button,
+#area-cliente input,
+#area-cliente .titulo-etapa,
+#area-horarios h3 {
+    scroll-margin-block: 6rem 1rem;
+}
+
+#area-cliente .titulo-etapa {
+    margin: 0 0 14px;
+    font-size: clamp(1.15rem, 3.5vw, 1.35rem);
+    text-align: center;
+}
+
+#area-cliente .selecionado {
+    outline: 2px solid currentColor;
+    outline-offset: -6px;
+}
+
+#area-cliente button.selecionado:focus-visible {
+    outline-offset: 3px;
+}
+
+#area-cliente .indisponivel {
+    color: var(--bb-muted);
+    opacity: 1;
+}
+
+#area-cliente .indisponivel :is(strong, span, small) {
+    color: inherit;
+}
+
+#area-horarios h3 {
+    margin-block: 0 16px;
+}
+
+#form-agendamento fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+#form-agendamento .campo {
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+#form-agendamento input {
+    width: 100%;
+    font-size: 16px;
+    padding: 10px 12px;
+}
+
+#form-agendamento .btn-confirmar,
+#btn-nova-reserva {
+    min-height: 48px;
+}
+
+#form-agendamento :disabled,
+#btn-etapa-anterior:disabled,
+#btn-admin:disabled {
+    cursor: wait;
+    transform: none;
+}
+
+#aviso-confirmacao:not(:empty) {
+    padding-block: 12px;
+}
+
+.resumo-reserva {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+    padding: 12px;
+    margin: 0 0 14px;
+    border: 1px solid var(--bb-border);
+    border-radius: 12px;
+    background: var(--bb-surface-2);
+}
+
+.resumo-reserva dt {
+    color: var(--bb-muted);
+    font-size: .85rem;
+}
+
+.resumo-reserva dd {
+    margin: 0;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.cards-servicos,
+.dias-cliente,
+.horarios,
+.lista-barbeiros {
+    display: grid;
+    gap: 10px;
+}
+
+.cards-servicos {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
+}
+
+.card-servico {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: none;
+    min-height: 64px;
+    padding: 12px 14px;
+    border: 1px solid var(--bb-border);
+    border-radius: var(--bb-radius);
+    background: var(--bb-surface);
+    text-align: left;
+}
+
+.card-servico h3,
+.card-servico p {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.card-servico h3 {
+    overflow-wrap: anywhere;
+}
+
+.card-servico p {
+    color: var(--bb-text);
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.card-servico:hover,
+.card-servico.selecionado {
+    background: var(--bb-surface-2);
+    border-color: var(--bb-accent);
+}
+
+#agendamento,
+#barbeiros,
+#dados-cliente {
+    margin: 12px auto 20px;
+    padding: 14px;
+    background: var(--bb-surface);
+    border: 1px solid var(--bb-border);
+    border-radius: var(--bb-radius);
+    box-shadow: var(--bb-shadow);
+}
+
+#agendamento,
+#barbeiros {
+    max-width: 100%;
+}
+
+#dados-cliente {
+    max-width: 560px;
+}
+
+#area-horarios {
+    margin: 18px auto 0;
+}
+
+.dias-cliente {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+    margin: 0 0 10px;
+}
+
+.horarios {
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+}
+
+.lista-barbeiros {
+    grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+}
+
+.card-dia,
+.card-horario,
+.card-barbeiro {
+    background: var(--bb-surface-2);
+    border: 1px solid var(--bb-border);
+    border-radius: 12px;
+    color: var(--bb-text);
+    box-shadow: none;
+}
+
+.card-dia {
+    width: 100%;
+    min-height: 64px;
+    padding: 8px;
+    gap: 3px;
+}
+
+.card-dia strong { color: var(--bb-accent-strong); }
+.card-dia span { color: var(--bb-muted); }
+.card-barbeiro { padding: 12px; overflow-wrap: anywhere; }
+
+.card-dia:hover,
+.card-horario:hover,
+.card-barbeiro:hover {
+    border-color: var(--bb-accent);
+}
+
+.card-dia.selecionado,
+.card-horario.selecionado,
+.card-barbeiro.selecionado {
+    background: var(--bb-accent);
+    border-color: var(--bb-accent);
+    color: var(--bb-bg);
+}
+
+.card-dia.selecionado strong,
+.card-dia.selecionado span {
+    color: var(--bb-bg);
+}
+
+.card-dia.indisponivel,
+.card-horario.indisponivel {
+    background: var(--bb-bg);
+    border-color: var(--bb-border);
+}
+
+@media (min-width: 640px) {
+    #area-cliente {
+        width: min(1180px, calc(100% - 40px));
+        padding-block: 24px 70px;
+    }
+
+    .titulo-servicos {
+        margin: 32px auto 24px;
+    }
+
+    .booking-steps {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .cards-servicos {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+    }
+
+    .card-servico {
+        grid-template-columns: 1fr;
+        align-content: center;
+        min-height: 110px;
+        padding: 18px;
+    }
+
+    #agendamento,
+    #barbeiros,
+    #dados-cliente {
+        padding: 24px;
+    }
+
+    .dias-cliente {
+        grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+    }
+}
+
+.campo label{font-size:.9rem}
 .campo input,.login-box input,.form-horario input,.filtros-admin input,.input-mes-faturamento,.form-data-bloqueada input{background:#102136;border:1px solid var(--bb-border);color:var(--bb-text);border-radius:11px;padding:13px}.campo input:focus,.login-box input:focus,.form-horario input:focus,.filtros-admin input:focus,.input-mes-faturamento:focus,.form-data-bloqueada input:focus{border-color:var(--bb-accent)}input::placeholder{color:#8da6bc}
 #area-login,#area-admin{width:min(1180px,calc(100% - 40px));margin:34px auto 64px}.login-box,.resumo-card,.admin-card{background:linear-gradient(145deg,#182c43,#122237);border:1px solid var(--bb-border);border-radius:var(--bb-radius);box-shadow:var(--bb-shadow)}.login-box{border-left:1px solid var(--bb-border);padding:34px}.admin-topo{padding:22px 0}.admin-topo h2{color:var(--bb-text);font-size:clamp(1.75rem,3vw,2.5rem);letter-spacing:-.04em}.admin-topo p,.admin-card-cabecalho p,.resumo-card span,.faturamento-item span{color:var(--bb-muted)}.admin-etiqueta{color:var(--bb-accent-strong);letter-spacing:.13em}.admin-resumo{gap:16px;margin-bottom:20px}.resumo-card{padding:24px;border-left:1px solid var(--bb-border);border-top:3px solid var(--bb-accent)}.resumo-card:nth-child(2){border-left-color:var(--bb-border);border-top-color:#6dbda7}.resumo-card:nth-child(3){border-left-color:var(--bb-border);border-top-color:#a2a9e9}.resumo-card strong{font-size:2.25rem;letter-spacing:-.045em}.admin-card{padding:24px}.admin-card h3{color:var(--bb-text);font-size:1.18rem}.faturamento-item,.faturamento-servico-item,.horario-admin-item,.data-bloqueada-item,.proximo-atendimento-item{background:#102137;border:1px solid var(--bb-border);border-radius:12px}.faturamento-item.destaque{border-left:3px solid #6dbda7}.faturamento-servico-item strong{color:#88d8bd}.proximo-atendimento-item strong{color:var(--bb-accent-strong)}.proximo-atendimento-item span,.proximo-atendimento-item small,.data-bloqueada-item span,.dias-admin label,.horario-admin-item label{color:var(--bb-text)}.dias-admin input,.horario-admin-item input{accent-color:var(--bb-accent)}
 .tabela-admin{border-collapse:separate;border-spacing:0}.tabela-admin th{background:#234665;color:#eaf6ff;font-size:.8rem;letter-spacing:.03em;text-transform:uppercase}.tabela-admin th:first-child{border-top-left-radius:10px}.tabela-admin th:last-child{border-top-right-radius:10px}.tabela-admin th,.tabela-admin td{border-bottom:1px solid var(--bb-border);padding:14px}.tabela-admin tr:hover td{background:#203a54}.btn-secundario{background:#213b56;border:1px solid var(--bb-border);color:var(--bb-text)}.btn-editar{background:#8cc3e7;color:#0b2031}.btn-excluir{background:#943d51}.mensagem-vazia{color:var(--bb-muted)}
 footer{background:#0a1320;border-top:1px solid var(--bb-border);padding:35px 20px}.footer-conteudo p{color:var(--bb-muted)}
 @media(max-width:900px){.admin-resumo{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-grid,.faturamento-resumo{grid-template-columns:1fr}.filtros-admin{grid-template-columns:1fr}}
-@media(max-width:768px){header{padding:12px 20px;gap:12px}.logo img{width:54px;height:54px}.logo h1{font-size:1.55rem}#area-cliente{width:calc(100% - 28px)}.titulo-servicos{margin:36px auto 24px}.cards-servicos{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card-servico{max-width:none;min-height:132px;padding:16px}.card-servico h3{font-size:.93rem}.card-servico p{font-size:1rem}.booking-steps{gap:7px}.booking-steps li{font-size:.72rem;padding:7px 10px}#agendamento,#barbeiros{padding:18px}.dias-cliente{grid-template-columns:repeat(2,minmax(0,1fr));max-width:none}.card-dia{width:100%}.admin-resumo{grid-template-columns:1fr}.admin-card,.login-box,#dados-cliente{padding:20px}.form-horario,.form-data-bloqueada{grid-template-columns:1fr}.form-horario button,.form-data-bloqueada button,.btn-secundario,.input-mes-faturamento{width:auto;max-width:none}.filtros-admin{grid-template-columns:1fr}}
-@media(max-width:390px){.cards-servicos{grid-template-columns:1fr}}
+@media(max-width:768px){header{padding:12px 20px;gap:12px}.logo img{width:54px;height:54px}.logo h1{font-size:1.55rem}.admin-resumo{grid-template-columns:1fr}.admin-card,.login-box{padding:20px}.form-horario,.form-data-bloqueada{grid-template-columns:1fr}.form-horario button,.form-data-bloqueada button,.btn-secundario,.input-mes-faturamento{width:auto;max-width:none}.filtros-admin{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}button{transition:none}}

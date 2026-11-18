@@ -21,17 +21,29 @@
 </header>
 
 <main id="area-cliente">
-    <section id="servicos">
-        <div class="titulo-servicos">
-            <span class="eyebrow">Agendamento online</span>
-            <h2>Seu próximo visual começa aqui.</h2>
-            <p>Escolha seu serviço, encontre um profissional e reserve o melhor horário em poucos passos.</p>
-        </div>
+    <div id="introducao-agendamento" class="titulo-servicos">
+        <span class="eyebrow">Agendamento online</span>
+        <h2>Seu próximo visual começa aqui.</h2>
+        <p>Escolha seu serviço, encontre um profissional e reserve o melhor horário em poucos passos.</p>
+    </div>
 
-        <ol class="booking-steps" aria-label="Etapas do agendamento">
-            <li>01 · Serviço</li><li>02 · Profissional</li><li>03 · Data e horário</li><li>04 · Confirmação</li>
-        </ol>
+    <ol class="booking-steps" aria-label="Etapas do agendamento">
+        <li aria-current="step">Serviço</li>
+        <li>Profissional</li>
+        <li>Data e horário</li>
+        <li>Confirmação</li>
+    </ol>
 
+    <div class="navegacao-agendamento">
+        <button id="btn-etapa-anterior" class="btn-secundario" type="button" hidden>Voltar</button>
+        <p id="aviso-data" class="aviso-data" role="status"></p>
+        <button id="btn-recarregar-disponibilidade" class="btn-secundario" type="button" hidden>
+            Tentar novamente
+        </button>
+    </div>
+
+    <section id="servicos" aria-labelledby="titulo-etapa-servico">
+        <h2 id="titulo-etapa-servico" class="titulo-etapa" tabindex="-1">Escolha o serviço</h2>
         <div class="cards-servicos">
             <button class="card-servico" data-servico="Corte na maquina" data-preco="R$ 25,00">
                 <h3>Corte na maquina</h3>
@@ -90,48 +102,53 @@
         </div>
     </section>
 
-    <section id="agendamento" style="display: none;">
-        <h2>Escolha a data do atendimento</h2>
+    <section id="barbeiros" aria-labelledby="titulo-etapa-profissional" hidden>
+        <h2 id="titulo-etapa-profissional" class="titulo-etapa" tabindex="-1">Escolha o profissional</h2>
+        <div class="lista-barbeiros" id="lista-barbeiros"></div>
+    </section>
 
-
+    <section id="agendamento" aria-labelledby="titulo-etapa-data" hidden>
+        <h2 id="titulo-etapa-data" class="titulo-etapa" tabindex="-1">Escolha a data e o horário</h2>
         <div class="dias-cliente" id="dias-cliente"></div>
-        <small id="aviso-data" class="aviso-data" role="status"></small>
-        <button id="btn-recarregar-disponibilidade" class="btn-secundario" type="button" hidden>
-            Tentar carregar disponibilidade novamente
-        </button>
+        <p id="aviso-horarios" class="aviso-data" role="status"></p>
 
-        <div id="area-horarios" style="display: none;">
-            <h2>Horários disponíveis</h2>
+        <div id="area-horarios" hidden>
+            <h3>Horários</h3>
             <div class="area-horarios">
                 <div class="horarios" id="horarios-cliente"></div>
             </div>
         </div>
     </section>
 
-    <section id="barbeiros" style="display: none;">
-        <h2>Selecione seu profissional</h2>
-        <div class="lista-barbeiros" id="lista-barbeiros"></div>
-    </section>
+    <section id="dados-cliente" aria-labelledby="titulo-etapa-confirmacao" hidden>
+        <h2 id="titulo-etapa-confirmacao" class="titulo-etapa" tabindex="-1">Confirme a reserva</h2>
 
-    <section id="dados-cliente" style="display: none;">
-        <h2>Confirme seus dados</h2>
-
+        <dl class="resumo-reserva">
+            <div><dt>Serviço</dt><dd id="resumo-servico"></dd></div>
+            <div><dt>Preço</dt><dd id="resumo-preco"></dd></div>
+            <div><dt>Profissional</dt><dd id="resumo-profissional"></dd></div>
+            <div><dt>Data e horário</dt><dd id="resumo-data-horario"></dd></div>
+        </dl>
 
         <form id="form-agendamento">
-            <div class="campo">
-                <label for="nome">Nome</label>
-                <input type="text" id="nome" placeholder="Digite seu nome" required>
-            </div>
+            <fieldset>
+                <div class="campo">
+                    <label for="nome">Nome</label>
+                    <input type="text" id="nome" placeholder="Digite seu nome" autocomplete="name"
+                        autocapitalize="words" enterkeyhint="next" required>
+                </div>
 
-            <div class="campo">
-                <label for="whatsapp">WhatsApp</label>
-                <input type="tel" id="whatsapp" placeholder="(21) 99999-9999" required>
-            </div>
+                <div class="campo">
+                    <label for="whatsapp">WhatsApp</label>
+                    <input type="tel" id="whatsapp" placeholder="(21) 99999-9999" autocomplete="tel"
+                        inputmode="tel" enterkeyhint="go" required>
+                </div>
 
-            <button type="submit" class="btn-confirmar">
-                Confirmar agendamento
-            </button>
+                <button type="submit" class="btn-confirmar">Confirmar agendamento</button>
+            </fieldset>
         </form>
+        <p id="aviso-confirmacao" class="aviso-data" role="status"></p>
+        <button id="btn-nova-reserva" class="btn-confirmar" type="button" hidden>Fazer novo agendamento</button>
     </section>
 </main>
 

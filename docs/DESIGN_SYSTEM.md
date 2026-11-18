@@ -25,7 +25,9 @@ Tokens CSS estão declarados em `css/azul-noturno.css`, carregado após os estil
 - **Tabelas e indicadores:** hierarquia tipográfica clara, espaçamento consistente e rolagem horizontal em telas pequenas.
 
 ## Agendamento
-Experiência desejada: serviço → profissional → data/horário → confirmação. Os indicadores de etapas adicionados em `index.html` são **apenas apresentação estática inicial**; não refletem automaticamente o estado do fluxo. Torná-los dinâmicos somente durante a refatoração funcional, com testes.
+O fluxo apresenta uma etapa por vez, de serviço a profissional, data e horário e confirmação. O progresso permanece visível e marca a etapa ativa com `aria-current="step"`. Ao avançar ou voltar, o foco vai para o título da etapa. O botão **Voltar** mantém as escolhas válidas.
+
+Datas bloqueadas e horários ocupados têm rótulos próprios. A confirmação apresenta serviço, preço, profissional, data e horário antes dos campos de contato. Durante o envio, um estado textual informa que a reserva está sendo confirmada.
 
 ## Painel
 Priorizar visão geral, agenda, agendamentos, disponibilidade e configurações. Manter os IDs e eventos existentes até migração controlada.
@@ -34,7 +36,9 @@ Priorizar visão geral, agenda, agendamentos, disponibilidade e configurações.
 - Manter contraste adequado e foco por teclado.
 - Não comunicar seleção ou indisponibilidade somente por cor.
 - Usar labels e mensagens acessíveis em formulários.
-- Considerar telas de 320 px até desktop; evitar overflow em cards e formulários.
+- Começar o layout do agendamento por 320, 360, 375 e 390 px. Usar alvos de toque de pelo menos 44 × 44 px e campos com fonte de 16 px.
+- Manter a confirmação no fluxo da página, abaixo dos campos. Usar entrada telefônica no WhatsApp e permitir rolagem quando a área útil diminui com o teclado.
+- Usar painéis e grades que cabem na largura disponível, com mais colunas em telas maiores.
 - Respeitar `prefers-reduced-motion`.
 - Não esconder ações críticas apenas no hover.
 

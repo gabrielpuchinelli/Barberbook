@@ -10,10 +10,15 @@ const barbeirosSection = document.getElementById("barbeiros");
 const listaBarbeiros = document.getElementById("lista-barbeiros");
 const dadosCliente = document.getElementById("dados-cliente");
 const formAgendamento = document.getElementById("form-agendamento");
-
-
-
-
+const introducaoAgendamento = document.getElementById("introducao-agendamento");
+const etapasAgendamento = [servicos, barbeirosSection, agendamento, dadosCliente];
+const indicadoresEtapa = document.querySelectorAll(".booking-steps li");
+const btnEtapaAnterior = document.getElementById("btn-etapa-anterior");
+const btnNovaReserva = document.getElementById("btn-nova-reserva");
+const avisoHorarios = document.getElementById("aviso-horarios");
+const avisoConfirmacao = document.getElementById("aviso-confirmacao");
+const nomeCliente = document.getElementById("nome");
+const whatsappCliente = document.getElementById("whatsapp");
 const btnAdmin = document.getElementById("btn-admin");
 const areaCliente = document.getElementById("area-cliente");
 const areaLogin = document.getElementById("area-login");
@@ -68,7 +73,11 @@ const NOMES_DIAS = {
 let disponibilidadePublica = null;
 let estadoDisponibilidade = "carregando";
 let consultaDisponibilidade = 0;
-let horarioSelecionado = null;
+let etapaAgendamento = servicos;
+let reserva = {};
+let reservaConfirmada = false;
+let enviandoReserva = false;
+let mensagemReserva = "";
 let agendamentosPrivados = [];
 let diasDisponiveisCache = {};
 let horariosDisponiveisCache = [];
@@ -79,43 +88,8 @@ let tentativaLogin = null;
 let sessaoPainel = null;
 let encerrandoSessao = false;
 
-localStorage.removeItem("agendamentos");
-localStorage.removeItem("barbeiro_nome");
-localStorage.removeItem("horario");
-
-function renderizarBarbeirosCliente() {
-    const barbeiroSelecionado = localStorage.getItem("barbeiro_id");
-    const barbeiros = disponibilidadePublica?.barbeiros;
-
-    listaBarbeiros.replaceChildren();
-
-    if (!barbeiros) return;
-    if (barbeiros.length === 0) {
-        listaBarbeiros.innerHTML = '<p class="mensagem-vazia">Nenhum barbeiro disponivel no momento.</p>';
-        return;
-    }
-
-    barbeiros.forEach(item => {
-        const botao = document.createElement("button");
-        botao.type = "button";
-        botao.className = "card-barbeiro";
-        botao.textContent = item.nome;
-
-        if (String(item.id) === String(barbeiroSelecionado)) {
-            botao.classList.add("selecionado");
-        }
-
-        botao.addEventListener("click", () => {
-            if (localStorage.getItem("barbeiro_id") !== String(item.id)) {
-                invalidarHorarioSelecionado();
-            }
-            localStorage.setItem("barbeiro_id", item.id);
-            renderizarBarbeirosCliente();
-            renderizarHorariosCliente();
-        });
-
-        listaBarbeiros.appendChild(botao);
-    });
+for (const chave of ["agendamentos", "barbeiro_nome", "servico", "preco", "barbeiro_id", "data", "horario"]) {
+    localStorage.removeItem(chave);
 }
 
 function normalizarAgendamento(agendamentoItem) {
@@ -166,11 +140,17 @@ async function consultarConfiguracaoAgenda() {
 }
 
 async function carregarDisponibilidadePublica() {
+    if (enviandoReserva) return;
+
     const consulta = ++consultaDisponibilidade;
-    invalidarHorarioSelecionado();
+    const etapaAnterior = etapaAgendamento;
+    if (!reservaConfirmada) {
+        reserva.horario = null;
+        if (etapaAgendamento === dadosCliente) etapaAgendamento = agendamento;
+    }
     disponibilidadePublica = null;
     estadoDisponibilidade = "carregando";
-    renderizarDisponibilidadeCliente();
+    renderizarEtapaAgendamento(etapaAnterior !== etapaAgendamento);
 
     try {
         const [resposta, configuracao] = await Promise.all([
@@ -197,7 +177,16 @@ async function carregarDisponibilidadePublica() {
         estadoDisponibilidade = "erro";
     }
 
-    renderizarDisponibilidadeCliente();
+    const etapaEmConsulta = etapaAgendamento;
+    if (disponibilidadePublica && !reservaConfirmada) {
+        if (reserva.barbeiroId && !barbeiroSelecionado()) {
+            reserva.barbeiroId = null;
+            reserva.data = null;
+            if (etapaAgendamento === agendamento) etapaAgendamento = barbeirosSection;
+        }
+        if (!dataDisponivel(reserva.data)) reserva.data = null;
+    }
+    renderizarEtapaAgendamento(etapaEmConsulta !== etapaAgendamento);
 }
 
 async function consultarDadosPainel(sessao) {
@@ -404,259 +393,323 @@ function proximaDataDoDia(diaSemana) {
 
 
 
+function marcarOpcaoSelecionada(botao, selecionada) {
+    botao.classList.toggle("selecionado", selecionada);
+    botao.setAttribute("aria-pressed", String(selecionada));
+}
+
+function mudarEtapaAgendamento(etapa) {
+    if (enviandoReserva) return;
+    etapaAgendamento = etapa;
+    renderizarEtapaAgendamento(true);
+}
+
+function renderizarEtapaAgendamento(focarTitulo = false) {
+    const indice = etapasAgendamento.indexOf(etapaAgendamento);
+    introducaoAgendamento.hidden = etapaAgendamento !== servicos;
+    etapasAgendamento.forEach(etapa => { etapa.hidden = etapa !== etapaAgendamento; });
+    indicadoresEtapa.forEach((indicador, i) => {
+        if (i === indice) indicador.setAttribute("aria-current", "step");
+        else indicador.removeAttribute("aria-current");
+        indicador.classList.toggle("etapa-concluida", i < indice);
+    });
+
+    btnEtapaAnterior.hidden = indice === 0 || reservaConfirmada;
+    btnEtapaAnterior.disabled = enviandoReserva;
+    btnAdmin.disabled = enviandoReserva;
+
+    const consultaVisivel = etapaAgendamento === barbeirosSection || etapaAgendamento === agendamento;
+    btnRecarregarDisponibilidade.hidden = !consultaVisivel || estadoDisponibilidade !== "erro";
+    avisoData.textContent = consultaVisivel ? mensagemDisponibilidade() : "";
+
+    if (etapaAgendamento === servicos) {
+        cardsServico.forEach(card => marcarOpcaoSelecionada(card, card.dataset.servico === reserva.servico?.nome));
+    } else if (etapaAgendamento === barbeirosSection) {
+        renderizarBarbeirosCliente();
+    } else if (etapaAgendamento === agendamento) {
+        if (disponibilidadePublica && !dataDisponivel(reserva.data)) {
+            reserva.data = null;
+            reserva.horario = null;
+        }
+        renderizarDiasCliente();
+        renderizarHorariosCliente();
+    } else {
+        renderizarConfirmacao();
+    }
+
+    if (focarTitulo && areaCliente.style.display !== "none") {
+        etapaAgendamento.querySelector(".titulo-etapa").focus();
+    }
+}
+
+function mensagemDisponibilidade() {
+    let mensagem = "";
+    if (estadoDisponibilidade === "carregando") {
+        mensagem = "Carregando disponibilidade…";
+    } else if (estadoDisponibilidade === "erro") {
+        mensagem = "Não foi possível carregar a disponibilidade.";
+    } else if (etapaAgendamento === barbeirosSection && disponibilidadePublica.barbeiros.length === 0) {
+        mensagem = "Nenhum profissional disponível no momento.";
+    }
+
+    return [mensagemReserva, mensagem].filter(Boolean).join(" ");
+}
+
 cardsServico.forEach(card => {
     card.addEventListener("click", () => {
+        if (enviandoReserva || etapaAgendamento !== servicos) return;
 
-        const servicoEscolhido = card.dataset.servico;
-        const precoEscolhido = card.dataset.preco;
-
-        localStorage.setItem("servico", servicoEscolhido);
-        localStorage.setItem("preco", precoEscolhido);
-        invalidarHorarioSelecionado();
-
-        cardsServico.forEach(item => item.classList.remove("selecionado"));
-        card.classList.add("selecionado");
-
-        servicos.style.display = "none";
-        agendamento.style.display = "block";
-        barbeirosSection.style.display = "block";
-        renderizarDiasCliente();
-        renderizarBarbeirosCliente();
-        agendamento.scrollIntoView({ behavior: "smooth" });
+        const { servico: nome, preco } = card.dataset;
+        if (reserva.servico?.nome !== nome) {
+            reserva = { servico: { nome, preco, rotulo: card.querySelector("h3").textContent } };
+            mensagemReserva = "";
+        }
+        mudarEtapaAgendamento(barbeirosSection);
     });
 });
 
-function renderizarHorariosCliente() {
-    horariosCliente.innerHTML = "";
-    avisoData.textContent = "";
-    btnRecarregarDisponibilidade.hidden = estadoDisponibilidade !== "erro";
-
-    if (!disponibilidadePublica) {
-        areaHorarios.style.display = "none";
-        dadosCliente.style.display = "none";
-        avisoData.textContent = estadoDisponibilidade === "erro"
-            ? "Não foi possível verificar a disponibilidade. Tente novamente."
-            : "Carregando disponibilidade...";
-        return;
-    }
-
-    const dataSelecionada = localStorage.getItem("data");
-    if (!dataSelecionada) {
-        areaHorarios.style.display = "none";
-        return;
-    }
-
-    const { dias: diasDisponiveis, datasBloqueadas, horarios } = disponibilidadePublica;
-    const diaSemana = new Date(`${dataSelecionada}T12:00:00`).getDay();
-
-    if (!diasDisponiveis[diaSemana]) {
-        areaHorarios.style.display = "none";
-        avisoData.textContent = "Este dia nao esta disponivel para agendamentos.";
-        return;
-    }
-
-    if (datasBloqueadas.includes(dataSelecionada)) {
-        areaHorarios.style.display = "none";
-        avisoData.textContent = "Esta data foi bloqueada pelo administrador.";
-        return;
-    }
-
-    const barbeiro = barbeiroSelecionado();
-    if (!barbeiro) {
-        areaHorarios.style.display = "block";
-        avisoData.textContent = "Selecione um barbeiro para ver a disponibilidade no horario.";
-        horariosCliente.innerHTML = '<p class="mensagem-vazia">Selecione um barbeiro.</p>';
-        return;
-    }
-
-    const horariosDisponiveis = horarios.filter(item => item.ativo);
-    if (horariosDisponiveis.length === 0) {
-        areaHorarios.style.display = "none";
-        avisoData.textContent = "Nenhum horario disponivel no momento.";
-        return;
-    }
-
-    areaHorarios.style.display = "block";
-    const horariosOcupados = obterHorariosOcupados(dataSelecionada, barbeiro.id);
-
-    ordenarHorarios(horariosDisponiveis).forEach(item => {
-        const botao = document.createElement("button");
-        const horarioOcupado = horariosOcupados.includes(item.horario);
-
-        botao.type = "button";
-        botao.className = "card-horario";
-        botao.textContent = horarioOcupado ? `${item.horario} ocupado` : item.horario;
-        botao.disabled = horarioOcupado;
-
-        if (horarioOcupado) {
-            botao.classList.add("indisponivel");
-        }
-
-
-            botao.addEventListener("click", () => {
-                if (horarioOcupado) return;
-
-                document.querySelectorAll(".card-horario").forEach(horario => {
-                    horario.classList.remove("selecionado");
-                });
-
-                botao.classList.add("selecionado");
-                horarioSelecionado = { data: dataSelecionada, barbeiroId: barbeiro.id, horario: item.horario };
-
-                areaHorarios.style.display = "none";
-                dadosCliente.style.display = "block";
-                dadosCliente.scrollIntoView({ behavior: "smooth" });
-
-            });
-
-
-        horariosCliente.appendChild(botao);
-    });
-}
-
-function renderizarDiasCliente() {
-    diasCliente.innerHTML = "";
-    if (!disponibilidadePublica) return;
-
-    const { dias: diasDisponiveis, datasBloqueadas } = disponibilidadePublica;
-    const ordemDias = [1, 2, 3, 4, 5, 6, 0];
-
-    ordemDias.forEach(dia => {
-        const botao = document.createElement("button");
-        const dataDia = proximaDataDoDia(dia);
-        const dataBloqueada = datasBloqueadas.includes(dataDia);
-        const disponivel = Boolean(diasDisponiveis[dia]) && !dataBloqueada;
-
-        botao.type = "button";
-        botao.className = "card-dia";
-        botao.disabled = !disponivel;
-
-        if (localStorage.getItem("data") === dataDia) {
-            botao.classList.add("selecionado");
-        }
-
-        if (!disponivel) {
-            botao.classList.add("indisponivel");
-        }
-
-        const nomeDia = document.createElement("strong");
-        const dataFormatada = document.createElement("span");
-        nomeDia.textContent = NOMES_DIAS[dia];
-        dataFormatada.textContent = formatarData(dataDia);
-        botao.appendChild(nomeDia);
-        botao.appendChild(dataFormatada);
-
-            botao.addEventListener("click", () => {
-                if (!disponivel) return;
-
-                localStorage.setItem("data", dataDia);
-                invalidarHorarioSelecionado();
-                areaHorarios.style.display = "block";
-                renderizarDiasCliente();
-                renderizarHorariosCliente();
-            });
-
-        diasCliente.appendChild(botao);
-    });
-}
-
 function barbeiroSelecionado() {
-    const id = localStorage.getItem("barbeiro_id");
-    return disponibilidadePublica?.barbeiros.find(item => String(item.id) === id);
+    return disponibilidadePublica?.barbeiros.find(item => String(item.id) === reserva.barbeiroId);
 }
 
-function invalidarHorarioSelecionado() {
-    horarioSelecionado = null;
-    dadosCliente.style.display = "none";
+function renderizarBarbeirosCliente() {
+    listaBarbeiros.replaceChildren();
+    disponibilidadePublica?.barbeiros.forEach(item => {
+        const id = String(item.id);
+        const botao = document.createElement("button");
+        botao.type = "button";
+        botao.className = "card-barbeiro";
+        botao.textContent = item.nome;
+        marcarOpcaoSelecionada(botao, id === reserva.barbeiroId);
+
+        botao.addEventListener("click", () => {
+            if (enviandoReserva || etapaAgendamento !== barbeirosSection ||
+                !disponibilidadePublica?.barbeiros.includes(item)) return;
+            if (reserva.barbeiroId !== id) {
+                reserva.barbeiroId = id;
+                reserva.data = null;
+                reserva.horario = null;
+                mensagemReserva = "";
+            }
+            mudarEtapaAgendamento(agendamento);
+        });
+        listaBarbeiros.appendChild(botao);
+    });
+}
+
+function dataDisponivel(data) {
+    if (!disponibilidadePublica || !data || data < dataAtualISO()) return false;
+    const diaSemana = new Date(`${data}T12:00:00`).getDay();
+    return Boolean(disponibilidadePublica.dias[diaSemana]) && !disponibilidadePublica.datasBloqueadas.includes(data);
 }
 
 function obterHorariosOcupados(data, barbeiroId) {
     return disponibilidadePublica.ocupacoes
-        .filter(item => item.data === data && String(item.barbeiro_id) === String(barbeiroId))
+        .filter(item => item.data === data && String(item.barbeiro_id) === barbeiroId)
         .map(item => item.horario);
 }
 
-function renderizarDisponibilidadeCliente() {
-    renderizarDiasCliente();
-    renderizarBarbeirosCliente();
-    renderizarHorariosCliente();
+function horarioFuturo(data, horario, agora = new Date()) {
+    return new Date(`${data}T${horario}:00`) > agora;
 }
 
-btnRecarregarDisponibilidade.addEventListener("click", carregarDisponibilidadePublica);
+function horarioDisponivel(horario) {
+    return dataDisponivel(reserva.data) && Boolean(barbeiroSelecionado()) &&
+        horarioFuturo(reserva.data, horario) &&
+        disponibilidadePublica.horarios.some(item => item.ativo && item.horario === horario) &&
+        !obterHorariosOcupados(reserva.data, reserva.barbeiroId).includes(horario);
+}
 
-formAgendamento.addEventListener("submit", async (e) => {
-    e.preventDefault();
+function renderizarDiasCliente() {
+    diasCliente.replaceChildren();
+    if (!disponibilidadePublica) return;
 
-    const disponibilidade = disponibilidadePublica;
-    if (!disponibilidade) return;
+    const datas = Object.keys(NOMES_DIAS)
+        .map(dia => ({ dia, data: proximaDataDoDia(dia) }))
+        .sort((a, b) => a.data.localeCompare(b.data));
 
-    const barbeiro = barbeiroSelecionado();
-    const dataSelecionada = localStorage.getItem("data");
-    if (!barbeiro || !horarioSelecionado || horarioSelecionado.data !== dataSelecionada ||
-        horarioSelecionado.barbeiroId !== barbeiro.id) {
-        alert("Escolha um dia, um profissional e um horário antes de confirmar.");
+    datas.forEach(({ dia, data }) => {
+        const disponivel = dataDisponivel(data);
+        const botao = document.createElement("button");
+        botao.type = "button";
+        botao.className = "card-dia";
+        botao.disabled = !disponivel;
+        botao.classList.toggle("indisponivel", !disponivel);
+        marcarOpcaoSelecionada(botao, data === reserva.data);
+
+        const nomeDia = document.createElement("strong");
+        const dataFormatada = document.createElement("span");
+        nomeDia.textContent = NOMES_DIAS[dia];
+        dataFormatada.textContent = formatarData(data);
+        botao.append(nomeDia, dataFormatada);
+        if (!disponivel) {
+            const status = document.createElement("small");
+            status.textContent = disponibilidadePublica.datasBloqueadas.includes(data) ? "Bloqueado" : "Indisponível";
+            botao.append(status);
+        }
+
+        botao.addEventListener("click", evento => {
+            if (enviandoReserva || etapaAgendamento !== agendamento || !dataDisponivel(data)) return;
+            if (reserva.data !== data) {
+                reserva.data = data;
+                reserva.horario = null;
+                mensagemReserva = "";
+                avisoData.textContent = mensagemDisponibilidade();
+            }
+            for (const card of diasCliente.children) marcarOpcaoSelecionada(card, card === botao);
+            renderizarHorariosCliente();
+            if (!areaHorarios.hidden && evento.detail > 0 && matchMedia("(pointer: coarse)").matches) {
+                areaHorarios.querySelector("h3").scrollIntoView({ block: "start" });
+            }
+        });
+        diasCliente.appendChild(botao);
+    });
+}
+
+function renderizarHorariosCliente() {
+    horariosCliente.replaceChildren();
+    areaHorarios.hidden = true;
+    avisoHorarios.textContent = "";
+    if (!disponibilidadePublica) return;
+    if (![...diasCliente.children].some(botao => !botao.disabled)) {
+        avisoHorarios.textContent = "Nenhuma data disponível no momento.";
         return;
     }
 
+    const data = reserva.data;
+    if (!dataDisponivel(data) || !barbeiroSelecionado()) return;
+
+    const horarios = ordenarHorarios(disponibilidadePublica.horarios.filter(item => item.ativo));
+    if (horarios.length === 0) {
+        avisoHorarios.textContent = "Nenhum horário disponível no momento.";
+        return;
+    }
+
+    const barbeiroId = reserva.barbeiroId;
+    const ocupados = obterHorariosOcupados(data, barbeiroId);
+    const agora = new Date();
+    let temHorarioDisponivel = false;
+    areaHorarios.hidden = false;
+
+    horarios.forEach(({ horario }) => {
+        const ocupado = ocupados.includes(horario);
+        const encerrado = !horarioFuturo(data, horario, agora);
+        const indisponivel = ocupado || encerrado;
+        if (!indisponivel) temHorarioDisponivel = true;
+
+        const botao = document.createElement("button");
+        botao.type = "button";
+        botao.className = "card-horario";
+        botao.textContent = ocupado ? `${horario} ocupado` : encerrado ? `${horario} encerrado` : horario;
+        botao.disabled = indisponivel;
+        botao.classList.toggle("indisponivel", indisponivel);
+        marcarOpcaoSelecionada(botao, !indisponivel && horario === reserva.horario);
+
+        botao.addEventListener("click", () => {
+            if (enviandoReserva || etapaAgendamento !== agendamento || data !== reserva.data ||
+                barbeiroId !== reserva.barbeiroId || !horarioDisponivel(horario)) return;
+            reserva.horario = horario;
+            mensagemReserva = "";
+            mudarEtapaAgendamento(dadosCliente);
+        });
+        horariosCliente.appendChild(botao);
+    });
+
+    if (!temHorarioDisponivel) {
+        avisoHorarios.textContent = "Nenhum horário disponível nessa data. Escolha outra data.";
+    }
+}
+
+function renderizarConfirmacao() {
+    const { servico, data, horario, nomeProfissional } = reserva;
+    dadosCliente.querySelector(".titulo-etapa").textContent = reservaConfirmada ? "Agendamento confirmado" : "Confirme a reserva";
+    document.getElementById("resumo-servico").textContent = servico.rotulo;
+    document.getElementById("resumo-preco").textContent = servico.preco;
+    document.getElementById("resumo-profissional").textContent = nomeProfissional ?? barbeiroSelecionado()?.nome ?? "";
+    document.getElementById("resumo-data-horario").textContent = `${formatarData(data)} às ${horario}`;
+    formAgendamento.hidden = reservaConfirmada;
+    formAgendamento.querySelector("fieldset").disabled = enviandoReserva;
+    btnNovaReserva.hidden = !reservaConfirmada;
+    avisoConfirmacao.textContent = enviandoReserva ? "Confirmando sua reserva…" : "";
+}
+
+btnEtapaAnterior.addEventListener("click", () => {
+    const indice = etapasAgendamento.indexOf(etapaAgendamento);
+    if (indice > 0 && !reservaConfirmada) mudarEtapaAgendamento(etapasAgendamento[indice - 1]);
+});
+
+btnNovaReserva.addEventListener("click", () => {
+    if (!reservaConfirmada) return;
+    reserva = {};
+    reservaConfirmada = false;
+    mudarEtapaAgendamento(servicos);
+});
+
+btnRecarregarDisponibilidade.addEventListener("click", () => {
+    if (btnRecarregarDisponibilidade.hidden || enviandoReserva) return;
+    etapaAgendamento.querySelector(".titulo-etapa").focus();
+    carregarDisponibilidadePublica();
+});
+
+formAgendamento.addEventListener("submit", async e => {
+    e.preventDefault();
+    if (enviandoReserva || reservaConfirmada || etapaAgendamento !== dadosCliente) return;
+    if (!formAgendamento.reportValidity()) return;
+
+    const nome = nomeCliente.value.trim();
+    const whatsapp = whatsappCliente.value.trim();
+    if (!nome || !whatsapp) {
+        avisoConfirmacao.textContent = "Preencha seu nome e WhatsApp.";
+        (nome ? whatsappCliente : nomeCliente).focus();
+        return;
+    }
+
+    const barbeiro = barbeiroSelecionado();
+    if (!reserva.servico || !horarioDisponivel(reserva.horario)) {
+        reserva.horario = null;
+        mensagemReserva = "O horário selecionado está indisponível. Escolha outro horário.";
+        mudarEtapaAgendamento(barbeiro ? agendamento : barbeirosSection);
+        return;
+    }
+
+    const { servico, data, horario, barbeiroId } = reserva;
     const agendamentoCliente = {
-        servico: localStorage.getItem("servico"),
-        preco: localStorage.getItem("preco"),
-        data: dataSelecionada,
-        horario: horarioSelecionado.horario,
-        nome: document.getElementById("nome").value.trim(),
-        whatsapp: document.getElementById("whatsapp").value.trim(),
-        barbeiro_id: String(barbeiro.id),
+        servico: servico.nome,
+        preco: servico.preco,
+        data,
+        horario,
+        nome,
+        whatsapp,
+        barbeiro_id: barbeiroId,
         barbeiro_nome: barbeiro.nome
     };
 
-    const { data, horario, barbeiro_id } = agendamentoCliente;
-    const diaSemana = new Date(`${data}T12:00:00`).getDay();
-    if (!disponibilidade.dias[diaSemana] || disponibilidade.datasBloqueadas.includes(data) ||
-        !disponibilidade.horarios.some(item => item.ativo && item.horario === horario) ||
-        obterHorariosOcupados(data, barbeiro_id).includes(horario)) {
-        invalidarHorarioSelecionado();
-        renderizarHorariosCliente();
-        avisoData.textContent = "O horário selecionado está indisponível. Escolha outro horário.";
-        return;
-    }
-
+    enviandoReserva = true;
+    renderizarEtapaAgendamento();
     try {
         await criarAgendamentoSupabase(agendamentoCliente);
     } catch (erro) {
-        if (erro?.code === "23505") {
-            await carregarDisponibilidadePublica();
-            if (disponibilidadePublica) {
-                avisoData.textContent = "Não foi possível reservar esse horário. Confira a disponibilidade.";
-            }
-        } else {
-            alert("Não foi possível confirmar o agendamento. Tente novamente.");
-        }
+        mensagemReserva = erro?.code === "23505"
+            ? "Não foi possível reservar esse horário. Escolha outro horário."
+            : "Não foi possível confirmar sua reserva. Confira a disponibilidade antes de tentar novamente.";
+    } finally {
+        enviandoReserva = false;
+    }
+
+    if (mensagemReserva) {
+        await carregarDisponibilidadePublica();
         return;
     }
 
-    if (disponibilidade === disponibilidadePublica) {
-        disponibilidade.ocupacoes.push({ data, horario, barbeiro_id });
-    } else if (areaCliente.style.display !== "none") {
-        carregarDisponibilidadePublica();
-    }
-
-    alert("Agendamento confirmado com sucesso!");
-
+    disponibilidadePublica.ocupacoes.push({ data, horario, barbeiro_id: barbeiroId });
+    reserva.nomeProfissional = barbeiro.nome;
+    reservaConfirmada = true;
     formAgendamento.reset();
-    localStorage.removeItem("servico");
-    localStorage.removeItem("preco");
-    localStorage.removeItem("data");
-    invalidarHorarioSelecionado();
-    localStorage.removeItem("barbeiro_id");
-    areaHorarios.style.display = "none";
-    barbeirosSection.style.display = "none";
-    servicos.style.display = "block";
-    agendamento.style.display = "none";
-    cardsServico.forEach(card => card.classList.remove("selecionado"));
-    renderizarHorariosCliente();
+    renderizarEtapaAgendamento(true);
 });
 
 btnAdmin.addEventListener("click", () => {
+    if (enviandoReserva) return;
     areaCliente.style.display = "none";
     areaLogin.style.display = "block";
     areaAdmin.style.display = "none";

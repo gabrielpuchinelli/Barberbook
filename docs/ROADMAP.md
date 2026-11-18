@@ -20,11 +20,14 @@
 - [ ] Validar visualmente as telas em desktop e dispositivos móveis.
 
 ## Fase 2 — Agendamento renovado
-- [ ] Mapear estados e dependências do fluxo atual.
-- [ ] Implementar seleção de serviço e profissional com feedback claro.
-- [ ] Melhorar calendário e horários, sem quebrar disponibilidade existente.
-- [ ] Exibir resumo e confirmação com tratamento de erros.
-- [ ] Testar bloqueios, conflitos, navegação e responsividade.
+- [x] Mapear estados e dependências do fluxo atual.
+- [x] Implementar seleção de serviço e profissional com feedback claro.
+- [x] Melhorar a seleção de datas e horários, preservando as regras de disponibilidade.
+- [x] Exibir resumo e confirmação com tratamento de erros e trava de envio.
+- [x] Testar bloqueios, conflitos, navegação e responsividade no navegador com dados simulados.
+- [x] Validar por emulação o toque e a altura reduzida de teclado nas larguras de 320, 360, 375 e 390 px.
+- [ ] Validar o teclado e o fluxo público em smartphones, incluindo os navegadores internos do WhatsApp e do Instagram.
+- [ ] Validar o fluxo e a concorrência com um projeto Supabase de teste após a auditoria.
 
 ## Fase 3 — Painel administrativo renovado
 - [ ] Organizar navegação e seções do painel.
