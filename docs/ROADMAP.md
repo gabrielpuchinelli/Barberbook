@@ -1,0 +1,46 @@
+# Roadmap — BarberBook
+
+## Premissas
+- Comercialização: implantação individual por barbearia.
+- Branch de trabalho: `main` (decisão do proprietário).
+- Identidade visual: Azul Noturno.
+- Implementações incrementais, com revisão e testes antes de commits.
+- Não alterar o banco real sem inventário, backup e aprovação.
+
+## Fase 1 — Auditoria e preparação
+- [x] Definir modelo comercial individual.
+- [x] Escolher identidade Azul Noturno.
+- [x] Aplicar camada inicial de estilo e atualizar apresentação em `index.html`.
+- [x] Documentar instruções, arquitetura, roadmap e design system.
+- [ ] Inventariar todas as regras e eventos de `js/script.js`.
+- [ ] Obter schema real do Supabase e comparar com `supabase-schema.sql`.
+- [ ] Auditar RLS, grants, view pública, RPCs e tratamento de dados pessoais.
+- [ ] Definir plano de testes e critérios de aceite para agendamentos.
+- [ ] Validar visualmente as telas em desktop e dispositivos móveis.
+
+## Fase 2 — Agendamento renovado
+- [ ] Mapear estados e dependências do fluxo atual.
+- [ ] Implementar seleção de serviço e profissional com feedback claro.
+- [ ] Melhorar calendário e horários, sem quebrar disponibilidade existente.
+- [ ] Exibir resumo e confirmação com tratamento de erros.
+- [ ] Testar bloqueios, conflitos, navegação e responsividade.
+
+## Fase 3 — Painel administrativo renovado
+- [ ] Organizar navegação e seções do painel.
+- [ ] Modernizar indicadores, lista/agenda e filtros.
+- [ ] Preservar operações de edição, exclusão, bloqueios e CSV.
+- [ ] Verificar permissões de administrador e barbeiro.
+
+## Fase 4 — Preparação comercial
+- [ ] Parametrizar nome, logo, contato, serviços, preços e horários por instalação.
+- [ ] Padronizar configuração segura do Supabase e provisionamento.
+- [ ] Documentar instalação, backup, atualização e suporte.
+- [ ] Executar testes de regressão e checklist de segurança.
+
+## Fase 5 — Evolução opcional
+- [ ] Avaliar React + TypeScript, conforme benefício e aprovação.
+- [ ] Introduzir automação de testes e integração contínua.
+- [ ] Melhorar observabilidade e procedimentos de manutenção.
+
+## Próxima tarefa para o Codex
+Inspecionar o fluxo atual e entregar **diagnóstico e plano de refatoração**, sem modificar arquivos ou banco até a aprovação do proprietário.
