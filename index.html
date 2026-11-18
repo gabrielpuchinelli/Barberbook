@@ -6,6 +6,7 @@
     <title>BarberBook</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/responsividade.css">
+    <link rel="stylesheet" href="css/azul-noturno.css">
 </head>
 <body>
 <header>
@@ -15,16 +16,21 @@
     </div>
 
     <button class="btn-admin" id="btn-admin">
-        Area do Administrador
+        Painel administrativo
     </button>
 </header>
 
 <main id="area-cliente">
     <section id="servicos">
         <div class="titulo-servicos">
-            <h2>Escolha seu servi&ccedil;o</h2>
-            <p>Selecione o servi&ccedil;o desejado e encontre o horario perfeito para voce.</p>
+            <span class="eyebrow">Agendamento online</span>
+            <h2>Seu próximo visual começa aqui.</h2>
+            <p>Escolha seu serviço, encontre um profissional e reserve o melhor horário em poucos passos.</p>
         </div>
+
+        <ol class="booking-steps" aria-label="Etapas do agendamento">
+            <li>01 · Serviço</li><li>02 · Profissional</li><li>03 · Data e horário</li><li>04 · Confirmação</li>
+        </ol>
 
         <div class="cards-servicos">
             <button class="card-servico" data-servico="Corte na maquina" data-preco="R$ 25,00">
@@ -85,14 +91,14 @@
     </section>
 
     <section id="agendamento" style="display: none;">
-        <h2>Escolha o dia</h2>
+        <h2>Escolha a data do atendimento</h2>
 
 
         <div class="dias-cliente" id="dias-cliente"></div>
         <small id="aviso-data" class="aviso-data"></small>
 
         <div id="area-horarios" style="display: none;">
-            <h2>Escolha o horario</h2>
+            <h2>Horários disponíveis</h2>
             <div class="area-horarios">
                 <div class="horarios" id="horarios-cliente"></div>
             </div>
@@ -100,7 +106,7 @@
     </section>
 
     <section id="barbeiros" style="display: none;">
-        <h2>Escolha o barbeiro</h2>
+        <h2>Selecione seu profissional</h2>
         <div class="lista-barbeiros" id="lista-barbeiros"></div>
     </section>
 
@@ -146,9 +152,9 @@
     <div class="admin-topo">
         <div>
             <span class="admin-etiqueta">Painel administrativo</span>
-            <h2>Controle da Barbearia</h2>
+            <h2>Visão geral da barbearia</h2>
             <p id="admin-saudacao" class="admin-saudacao">Bem-vindo ao painel.</p>
-            <p>Gerencie agenda, disponibilidade e atendimentos em um so lugar.</p>
+            <p>Acompanhe agendamentos, disponibilidade e resultados em um só lugar.</p>
         </div>
 
         <button id="btn-voltar" class="btn-secundario">Sair do painel</button>
@@ -156,17 +162,17 @@
 
     <div class="admin-resumo">
         <div class="resumo-card">
-            <span>Este mes</span>
+            <span>Agendamentos no mês</span>
             <strong id="total-agendamentos">0</strong>
         </div>
 
         <div class="resumo-card">
-            <span>Hoje</span>
+            <span>Atendimentos hoje</span>
             <strong id="agendamentos-hoje">0</strong>
         </div>
 
         <div class="resumo-card">
-            <span>Proximo</span>
+            <span>Próximo horário</span>
             <strong id="proximo-horario">--:--</strong>
         </div>
     </div>
