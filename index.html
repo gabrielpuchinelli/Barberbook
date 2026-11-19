@@ -135,13 +135,13 @@
                 <div class="campo">
                     <label for="nome">Nome</label>
                     <input type="text" id="nome" placeholder="Digite seu nome" autocomplete="name"
-                        autocapitalize="words" enterkeyhint="next" required>
+                        autocapitalize="words" enterkeyhint="next" maxlength="120" required>
                 </div>
 
                 <div class="campo">
                     <label for="whatsapp">WhatsApp</label>
                     <input type="tel" id="whatsapp" placeholder="(21) 99999-9999" autocomplete="tel"
-                        inputmode="tel" enterkeyhint="go" required>
+                        inputmode="tel" enterkeyhint="go" maxlength="64" required>
                 </div>
 
                 <button type="submit" class="btn-confirmar">Confirmar agendamento</button>
@@ -235,6 +235,7 @@
             </div>
             <div class="acoes-cabecalho">
                 <button id="btn-exportar-csv" class="btn-secundario" type="button">Exportar CSV</button>
+                <button id="btn-recarregar-agendamentos" class="btn-secundario" type="button">Recarregar agendamentos</button>
                 <button id="btn-limpar-filtros" class="btn-secundario" type="button">Limpar filtros</button>
             </div>
         </div>
@@ -246,7 +247,7 @@
                 <div class="form-editar-grid">
                     <div class="campo">
                         <label for="editar-nome">Nome</label>
-                        <input type="text" id="editar-nome" required>
+                        <input type="text" id="editar-nome" maxlength="120" required>
                     </div>
                     <div class="campo">
                         <label for="editar-whatsapp">WhatsApp</label>
@@ -254,7 +255,7 @@
                     </div>
                     <div class="campo">
                         <label for="editar-servico">Serviço</label>
-                        <input type="text" id="editar-servico" required>
+                        <select id="editar-servico" required></select>
                     </div>
                     <div class="campo">
                         <label for="editar-data">Data</label>
@@ -299,6 +300,7 @@
 
     <section id="painel-disponibilidade" class="admin-secao" aria-labelledby="titulo-disponibilidade-admin" hidden>
         <h3 id="titulo-disponibilidade-admin" tabindex="-1">Disponibilidade</h3>
+        <p id="disponibilidade-leitura" class="admin-status" hidden>Somente administradores podem alterar a disponibilidade.</p>
         <div class="admin-grade-disponibilidade">
             <div class="admin-card">
                 <h4>Dias disponíveis</h4>
@@ -315,7 +317,7 @@
             </div>
             <div class="admin-card">
                 <h4>Horários disponíveis</h4>
-                <form id="form-horario" class="form-horario">
+                <form id="form-horario" class="form-horario" hidden>
                     <div class="campo">
                         <label for="novo-horario">Novo horário</label>
                         <input type="time" id="novo-horario" required>
@@ -327,7 +329,7 @@
             </div>
             <div class="admin-card">
                 <h4>Datas bloqueadas</h4>
-                <form id="form-data-bloqueada" class="form-data-bloqueada">
+                <form id="form-data-bloqueada" class="form-data-bloqueada" hidden>
                     <div class="campo">
                         <label for="nova-data-bloqueada">Data a bloquear</label>
                         <input type="date" id="nova-data-bloqueada" required>

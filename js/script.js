@@ -1,4 +1,7 @@
 const cardsServico = document.querySelectorAll(".card-servico");
+const servicosDaInstalacao = new Map([...cardsServico].map(card => [
+    card.dataset.servico, card.querySelector("h3").textContent
+]));
 const servicos = document.getElementById("servicos");
 const agendamento = document.getElementById("agendamento");
 const avisoData = document.getElementById("aviso-data");
@@ -44,6 +47,21 @@ const statusPainel = {
     horarios: document.getElementById("status-horarios-admin"),
     bloqueios: document.getElementById("status-bloqueios-admin")
 };
+const AGENDAMENTO_CAMPOS = "id::text, nome, whatsapp, data, horario, barbeiro_id, barbeiro_nome, servico, preco";
+const OPERACAO_SEM_LINHA = new Error("Nenhuma linha afetada.");
+const formatoFusoBarbearia = (() => {
+    try {
+        if (typeof FUSO_BARBEARIA !== "string" || !FUSO_BARBEARIA.trim()) return null;
+        return new Intl.DateTimeFormat("en-CA", {
+            timeZone: FUSO_BARBEARIA, calendar: "iso8601", numberingSystem: "latn",
+            year: "numeric", month: "2-digit", day: "2-digit",
+            hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+        });
+    } catch {
+        return null;
+    }
+})();
+const deslocamentosPorDia = new Map();
 
 const totalAgendamentos = document.getElementById("total-agendamentos");
 const agendamentosHoje = document.getElementById("agendamentos-hoje");
@@ -57,6 +75,7 @@ const checkboxesDia = document.querySelectorAll(".checkbox-dia");
 const formHorario = document.getElementById("form-horario");
 const novoHorario = document.getElementById("novo-horario");
 const listaHorariosAdmin = document.getElementById("lista-horarios-admin");
+const disponibilidadeLeitura = document.getElementById("disponibilidade-leitura");
 const listaProximosAtendimentos = document.getElementById("lista-proximos-atendimentos");
 const formDataBloqueada = document.getElementById("form-data-bloqueada");
 const novaDataBloqueada = document.getElementById("nova-data-bloqueada");
@@ -67,6 +86,7 @@ const buscaAgendamento = document.getElementById("busca-agendamento");
 const filtroData = document.getElementById("filtro-data");
 const btnLimparFiltros = document.getElementById("btn-limpar-filtros");
 const btnExportarCsv = document.getElementById("btn-exportar-csv");
+const btnRecarregarAgendamentos = document.getElementById("btn-recarregar-agendamentos");
 
 const formEditar = document.getElementById("form-editar");
 const editarIndex = document.getElementById("editar-index");
@@ -127,6 +147,13 @@ function mensagemErroSupabase(erro) {
     ].filter(Boolean).join("\n");
 }
 
+function normalizarWhatsapp(valor) {
+    const texto = valor.trim();
+    if (texto.length > 64 || !/^\+?[0-9(). -]+$/.test(texto)) return null;
+    const numero = texto.replace(/[(). -]/g, "");
+    return /^\+?\d{10,15}$/.test(numero) ? numero : null;
+}
+
 function idBarbeiroValido(id) {
     if (typeof id === "number") return Number.isSafeInteger(id) && id > 0;
     return typeof id === "string" && (
@@ -135,33 +162,63 @@ function idBarbeiroValido(id) {
     );
 }
 
-async function consultarConfiguracaoAgenda() {
+async function consultarPaginas(tabela, campos, ordem, atual, filtrar = consulta => consulta, sinal) {
+    const itens = [];
+    const chaves = new Set();
+    let total;
+    do {
+        if (!atual()) throw new Error("Consulta cancelada.");
+        let consulta = filtrar(supabaseClient.from(tabela).select(campos, { count: "exact" }));
+        for (const coluna of ordem) consulta = consulta.order(coluna);
+        if (sinal) consulta = consulta.abortSignal(sinal);
+        const { data, count, error } = await consulta.range(itens.length, itens.length + 199);
+        if (!atual()) throw new Error("Consulta cancelada.");
+        if (error) throw error;
+        total ??= count;
+        if (!Array.isArray(data) || !Number.isSafeInteger(total) || total < 0 || count !== total ||
+            itens.length + data.length > total || (!data.length && itens.length < total)) {
+            throw new Error("Consulta incompleta.");
+        }
+        for (const linha of data) {
+            const chave = JSON.stringify(ordem.map(coluna => linha[coluna]));
+            if (chaves.has(chave)) throw new Error("Consulta mudou durante o carregamento.");
+            chaves.add(chave);
+            itens.push(linha);
+        }
+    } while (itens.length < total);
+    return itens;
+}
+
+async function consultarConfiguracaoAgenda(atual, sinal) {
     const [dias, horarios, bloqueios, barbeiros] = await Promise.all([
-        supabaseClient.from("dias_disponiveis").select("dia_semana, ativo").order("dia_semana"),
-        supabaseClient.from("horarios_disponiveis").select("horario, ativo").order("horario"),
-        supabaseClient.from("datas_bloqueadas").select("data").order("data"),
-        supabaseClient.from("barbeiros").select("id, nome").eq("ativo", true).order("nome")
+        consultarPaginas("dias_disponiveis", "dia_semana, ativo", ["dia_semana"], atual, undefined, sinal),
+        consultarPaginas("horarios_disponiveis", "horario, ativo", ["horario"], atual, undefined, sinal),
+        consultarPaginas("datas_bloqueadas", "data", ["data"], atual, undefined, sinal),
+        consultarPaginas("barbeiros", "id, nome", ["nome", "id"], atual, consulta => consulta.eq("ativo", true), sinal)
     ]);
 
-    for (const resposta of [dias, horarios, bloqueios, barbeiros]) {
-        if (resposta.error) throw resposta.error;
-    }
-
     return {
-        dias: Object.fromEntries(dias.data.map(item => [item.dia_semana, item.ativo])),
-        horarios: horarios.data.map(item => ({
+        dias: Object.fromEntries(dias.map(item => [item.dia_semana, item.ativo])),
+        horarios: horarios.map(item => ({
             horario: item.horario.slice(0, 5),
             ativo: item.ativo
         })),
-        datasBloqueadas: bloqueios.data.map(item => item.data),
-        barbeiros: barbeiros.data.filter(item => idBarbeiroValido(item.id))
+        datasBloqueadas: bloqueios.map(item => item.data),
+        barbeiros: barbeiros.filter(item => idBarbeiroValido(item.id))
     };
 }
 
 async function carregarDisponibilidadePublica() {
     if (enviandoReserva) return;
+    if (!formatoFusoBarbearia) {
+        estadoDisponibilidade = "configuracao";
+        renderizarEtapaAgendamento();
+        return;
+    }
 
     const consulta = ++consultaDisponibilidade;
+    const dia = dataAtualISO();
+    const atual = () => consulta === consultaDisponibilidade;
     const etapaAnterior = etapaAgendamento;
     if (!reservaConfirmada) {
         reserva.horario = null;
@@ -172,19 +229,18 @@ async function carregarDisponibilidadePublica() {
     renderizarEtapaAgendamento(etapaAnterior !== etapaAgendamento);
 
     try {
-        const [resposta, configuracao] = await Promise.all([
-            supabaseClient.from("agendamentos_publicos")
-                .select("data, horario, barbeiro_id")
-                .order("data")
-                .order("horario"),
-            consultarConfiguracaoAgenda()
+        const [ocupacoes, configuracao] = await Promise.all([
+            consultarPaginas("agendamentos_publicos", "data, horario, barbeiro_id",
+                ["data", "horario", "barbeiro_id"], atual),
+            consultarConfiguracaoAgenda(atual)
         ]);
-        if (consulta !== consultaDisponibilidade) return;
-        if (resposta.error) throw resposta.error;
+        if (!atual()) return;
+        if (dia !== dataAtualISO()) return carregarDisponibilidadePublica();
 
         disponibilidadePublica = {
             ...configuracao,
-            ocupacoes: resposta.data.map(({ data, horario, barbeiro_id }) => ({
+            dia,
+            ocupacoes: ocupacoes.map(({ data, horario, barbeiro_id }) => ({
                 data,
                 horario: horario.slice(0, 5),
                 barbeiro_id
@@ -192,7 +248,8 @@ async function carregarDisponibilidadePublica() {
         };
         estadoDisponibilidade = "disponivel";
     } catch {
-        if (consulta !== consultaDisponibilidade) return;
+        if (!atual()) return;
+        ++consultaDisponibilidade;
         estadoDisponibilidade = "erro";
     }
 
@@ -208,39 +265,40 @@ async function carregarDisponibilidadePublica() {
     renderizarEtapaAgendamento(etapaEmConsulta !== etapaAgendamento);
 }
 
-async function consultarDadosPainel(sessao) {
+async function consultarAgendamentosPrivados(sessao, atual) {
     if (sessao.tipo !== "admin" && (
         sessao.tipo !== "barbeiro" || !idBarbeiroValido(sessao.barbeiroId)
-    )) return null;
+    )) throw new Error("Escopo de leitura inválido.");
 
-    const consulta = supabaseClient.from("agendamentos")
-        .select("id, nome, whatsapp, data, horario, barbeiro_id, barbeiro_nome, servico, preco")
-        .order("data")
-        .order("horario");
+    const dados = await consultarPaginas("agendamentos", AGENDAMENTO_CAMPOS, ["data", "horario", "id"], atual,
+        consulta => sessao.tipo === "barbeiro" ? consulta.eq("barbeiro_id", sessao.barbeiroId) : consulta,
+        sessao.controlador.signal);
+    return dados.map(normalizarAgendamento);
+}
 
-    const [resposta, configuracao] = await Promise.all([
-        sessao.tipo === "barbeiro" ? consulta.eq("barbeiro_id", sessao.barbeiroId) : consulta,
-        consultarConfiguracaoAgenda()
+async function consultarDadosPainel(sessao, atual) {
+    const [agendamentos, configuracao] = await Promise.all([
+        consultarAgendamentosPrivados(sessao, atual),
+        consultarConfiguracaoAgenda(atual, sessao.controlador.signal)
     ]);
-    if (resposta.error) throw resposta.error;
-
-    return { agendamentos: resposta.data.map(normalizarAgendamento), configuracao };
+    return { agendamentos, configuracao };
 }
 
 async function criarAgendamentoSupabase(agendamentoCliente) {
-    const { error } = await supabaseClient
+    const { error, status } = await supabaseClient
         .from("agendamentos")
         .insert([agendamentoCliente]);
 
-    if (error) throw error;
+    if (error) throw { code: error.code, message: error.message, status };
 }
 
 async function executarEscritaPainel(sessao, consultar) {
     if (!sessaoPainelAtiva(sessao)) return false;
 
-    const valida = await confirmarSessaoAuth(sessao.auth);
+    const estado = await verificarSessaoAuth(sessao.auth);
     if (!sessaoPainelAtiva(sessao)) return false;
-    if (!valida) {
+    if (estado === "falha") throw new Error("Não foi possível verificar a sessão.");
+    if (estado !== "atual") {
         pedirNovoLogin();
         return false;
     }
@@ -253,8 +311,20 @@ async function executarEscritaPainel(sessao, consultar) {
         throw erro;
     }
     if (!sessaoPainelAtiva(sessao)) return false;
-    if (resposta.error) throw resposta.error;
+    if (resposta.error) throw { code: resposta.error.code, status: resposta.status };
     return resposta;
+}
+
+function confirmarLinhaEscrita(resposta, campo, esperado) {
+    const dados = resposta.data;
+    if (!Array.isArray(dados)) throw new Error("Resposta inesperada da operação.");
+    if (dados.length === 0) throw OPERACAO_SEM_LINHA;
+    const linha = dados[0];
+    const valor = campo === "horario" ? linha?.horario?.slice(0, 5) : linha?.[campo];
+    if (dados.length !== 1 || String(valor) !== String(esperado)) {
+        throw new Error("Resposta inesperada da operação.");
+    }
+    return linha;
 }
 
 async function atualizarAgendamentoSupabase(sessao, id, agendamentoAtualizado) {
@@ -262,12 +332,12 @@ async function atualizarAgendamentoSupabase(sessao, id, agendamentoAtualizado) {
         .from("agendamentos")
         .update(agendamentoAtualizado)
         .eq("id", id)
-        .select()
-        .single());
+        .select(AGENDAMENTO_CAMPOS));
 
     if (!resposta || !sessaoPainelAtiva(sessao)) return false;
+    const linha = confirmarLinhaEscrita(resposta, "id", id);
     agendamentosPrivados = agendamentosPrivados.map(item => {
-        return item.id === id ? normalizarAgendamento(resposta.data) : item;
+        return item.id === id ? normalizarAgendamento(linha) : item;
     });
     return true;
 }
@@ -276,9 +346,11 @@ async function excluirAgendamentoSupabase(sessao, id) {
     const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("agendamentos")
         .delete()
-        .eq("id", id));
+        .eq("id", id)
+        .select("id::text"));
 
     if (!resposta || !sessaoPainelAtiva(sessao)) return false;
+    confirmarLinhaEscrita(resposta, "id", id);
     agendamentosPrivados = agendamentosPrivados.filter(item => item.id !== id);
     return true;
 }
@@ -286,22 +358,25 @@ async function excluirAgendamentoSupabase(sessao, id) {
 async function salvarDiaDisponivelSupabase(sessao, diaSemana, ativo) {
     const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("dias_disponiveis")
-        .upsert([{ dia_semana: Number(diaSemana), ativo }], { onConflict: "dia_semana" }));
+        .upsert([{ dia_semana: Number(diaSemana), ativo }], { onConflict: "dia_semana" })
+        .select("dia_semana, ativo"));
 
     if (!resposta || !sessaoPainelAtiva(sessao)) return false;
-    diasDisponiveisCache[diaSemana] = ativo;
+    diasDisponiveisCache[diaSemana] = confirmarLinhaEscrita(resposta, "dia_semana", diaSemana).ativo;
     return true;
 }
 
 async function salvarHorarioDisponivelSupabase(sessao, horario, ativo) {
     const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("horarios_disponiveis")
-        .upsert([{ horario, ativo }], { onConflict: "horario" }));
+        .upsert([{ horario, ativo }], { onConflict: "horario" })
+        .select("horario, ativo"));
 
     if (!resposta || !sessaoPainelAtiva(sessao)) return false;
+    const linha = confirmarLinhaEscrita(resposta, "horario", horario);
     horariosDisponiveisCache = [
         ...horariosDisponiveisCache.filter(item => item.horario !== horario),
-        { horario, ativo }
+        { horario, ativo: linha.ativo }
     ];
     return true;
 }
@@ -310,9 +385,11 @@ async function removerHorarioSupabase(sessao, horario) {
     const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("horarios_disponiveis")
         .delete()
-        .eq("horario", horario));
+        .eq("horario", horario)
+        .select("horario"));
 
     if (!resposta || !sessaoPainelAtiva(sessao)) return false;
+    confirmarLinhaEscrita(resposta, "horario", horario);
     horariosDisponiveisCache = horariosDisponiveisCache.filter(item => item.horario !== horario);
     return true;
 }
@@ -320,9 +397,11 @@ async function removerHorarioSupabase(sessao, horario) {
 async function salvarDataBloqueadaSupabase(sessao, data) {
     const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("datas_bloqueadas")
-        .insert([{ data }]));
+        .insert([{ data }])
+        .select("data"));
 
     if (!resposta || !sessaoPainelAtiva(sessao)) return false;
+    confirmarLinhaEscrita(resposta, "data", data);
     datasBloqueadasCache = [...datasBloqueadasCache, data].sort();
     return true;
 }
@@ -331,19 +410,55 @@ async function removerDataBloqueadaSupabase(sessao, data) {
     const resposta = await executarEscritaPainel(sessao, () => supabaseClient
         .from("datas_bloqueadas")
         .delete()
-        .eq("data", data));
+        .eq("data", data)
+        .select("data"));
 
     if (!resposta || !sessaoPainelAtiva(sessao)) return false;
+    confirmarLinhaEscrita(resposta, "data", data);
     datasBloqueadasCache = datasBloqueadasCache.filter(item => item !== data);
     return true;
 }
 
-function dataAtualISO(hoje = new Date()) {
-    const ano = hoje.getFullYear();
-    const mes = String(hoje.getMonth() + 1).padStart(2, "0");
-    const dia = String(hoje.getDate()).padStart(2, "0");
+function dataHoraBarbearia(instante) {
+    const partes = Object.fromEntries(formatoFusoBarbearia.formatToParts(instante)
+        .map(({ type, value }) => [type, value]));
+    return { data: `${partes.year}-${partes.month}-${partes.day}`, hora: `${partes.hour}:${partes.minute}` };
+}
 
-    return `${ano}-${mes}-${dia}`;
+function dataAtualISO(hoje = new Date()) {
+    return dataHoraBarbearia(hoje).data;
+}
+
+function diaSemanaCalendario(data) {
+    return new Date(`${data}T00:00:00Z`).getUTCDay();
+}
+
+function deslocamentosDoDia(data) {
+    if (deslocamentosPorDia.has(data)) return deslocamentosPorDia.get(data);
+    const meioDia = Date.parse(`${data}T12:00:00Z`);
+    const offsets = new Set([-36, 0, 36].map(horas => {
+        const instante = meioDia + horas * 3_600_000;
+        const local = dataHoraBarbearia(new Date(instante));
+        return Date.parse(`${local.data}T${local.hora}:00Z`) - instante;
+    }));
+    if (deslocamentosPorDia.size >= 32) deslocamentosPorDia.delete(deslocamentosPorDia.keys().next().value);
+    deslocamentosPorDia.set(data, offsets);
+    return offsets;
+}
+
+function instanteDoHorario(data, horario) {
+    const civil = Date.parse(`${data}T${horario}:00Z`);
+    if (!Number.isFinite(civil)) return null;
+    let instanteValido = null;
+    for (const offset of deslocamentosDoDia(data)) {
+        const candidato = civil - offset;
+        const local = dataHoraBarbearia(new Date(candidato));
+        if (local.data === data && local.hora === horario && (instanteValido === null || candidato > instanteValido)) {
+            instanteValido = candidato;
+        }
+    }
+    // PostgreSQL usa a ocorrência posterior para uma hora civil repetida.
+    return instanteValido;
 }
 
 function atualizarSaudacao() {
@@ -401,17 +516,10 @@ function ordenarHorarios(horarios) {
 }
 
 function proximaDataDoDia(diaSemana) {
-    const hoje = new Date();
-    const data = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
-    const diferenca = (Number(diaSemana) - data.getDay() + 7) % 7;
-
-    data.setDate(data.getDate() + diferenca);
-
-    const ano = data.getFullYear();
-    const mes = String(data.getMonth() + 1).padStart(2, "0");
-    const dia = String(data.getDate()).padStart(2, "0");
-
-    return `${ano}-${mes}-${dia}`;
+    const data = new Date(`${dataAtualISO()}T00:00:00Z`);
+    const diferenca = (Number(diaSemana) - data.getUTCDay() + 7) % 7;
+    data.setUTCDate(data.getUTCDate() + diferenca);
+    return data.toISOString().slice(0, 10);
 }
 
 
@@ -471,7 +579,9 @@ function mensagemDisponibilidade() {
         mensagem = "Carregando disponibilidade…";
     } else if (estadoDisponibilidade === "erro") {
         mensagem = "Não foi possível carregar a disponibilidade.";
-    } else if (etapaAgendamento === barbeirosSection && disponibilidadePublica.barbeiros.length === 0) {
+    } else if (estadoDisponibilidade === "configuracao") {
+        mensagem = "O fuso horário da barbearia precisa ser configurado.";
+    } else if (etapaAgendamento === barbeirosSection && disponibilidadePublica?.barbeiros.length === 0) {
         mensagem = "Nenhum profissional disponível no momento.";
     }
 
@@ -521,8 +631,11 @@ function renderizarBarbeirosCliente() {
 }
 
 function dataDisponivel(data) {
-    if (!disponibilidadePublica || !data || data < dataAtualISO()) return false;
-    const diaSemana = new Date(`${data}T12:00:00`).getDay();
+    if (!disponibilidadePublica || !data || disponibilidadePublica.dia !== dataAtualISO()) return false;
+    const limite = new Date(`${disponibilidadePublica.dia}T00:00:00Z`);
+    limite.setUTCDate(limite.getUTCDate() + 6);
+    if (data < disponibilidadePublica.dia || data > limite.toISOString().slice(0, 10)) return false;
+    const diaSemana = diaSemanaCalendario(data);
     return Boolean(disponibilidadePublica.dias[diaSemana]) && !disponibilidadePublica.datasBloqueadas.includes(data);
 }
 
@@ -533,7 +646,8 @@ function obterHorariosOcupados(data, barbeiroId) {
 }
 
 function horarioFuturo(data, horario, agora = new Date()) {
-    return new Date(`${data}T${horario}:00`) > agora;
+    const instante = instanteDoHorario(data, horario);
+    return instante !== null && instante > agora.getTime();
 }
 
 function horarioDisponivel(horario) {
@@ -674,15 +788,26 @@ btnRecarregarDisponibilidade.addEventListener("click", () => {
     carregarDisponibilidadePublica();
 });
 
+function atualizarDiaDisponibilidade() {
+    if (!enviandoReserva && disponibilidadePublica && disponibilidadePublica.dia !== dataAtualISO()) {
+        return carregarDisponibilidadePublica();
+    }
+}
+
 formAgendamento.addEventListener("submit", async e => {
     e.preventDefault();
     if (enviandoReserva || reservaConfirmada || etapaAgendamento !== dadosCliente) return;
+    const recarga = atualizarDiaDisponibilidade();
+    if (recarga) {
+        await recarga;
+        return;
+    }
     if (!formAgendamento.reportValidity()) return;
 
     const nome = nomeCliente.value.trim();
-    const whatsapp = whatsappCliente.value.trim();
+    const whatsapp = normalizarWhatsapp(whatsappCliente.value);
     if (!nome || !whatsapp) {
-        avisoConfirmacao.textContent = "Preencha seu nome e WhatsApp.";
+        avisoConfirmacao.textContent = nome ? "Informe um WhatsApp com 10 a 15 dígitos." : "Preencha seu nome.";
         (nome ? whatsappCliente : nomeCliente).focus();
         return;
     }
@@ -698,13 +823,11 @@ formAgendamento.addEventListener("submit", async e => {
     const { servico, data, horario, barbeiroId } = reserva;
     const agendamentoCliente = {
         servico: servico.nome,
-        preco: servico.preco,
         data,
         horario,
         nome,
         whatsapp,
-        barbeiro_id: barbeiroId,
-        barbeiro_nome: barbeiro.nome
+        barbeiro_id: barbeiroId
     };
 
     enviandoReserva = true;
@@ -712,9 +835,15 @@ formAgendamento.addEventListener("submit", async e => {
     try {
         await criarAgendamentoSupabase(agendamentoCliente);
     } catch (erro) {
-        mensagemReserva = erro?.code === "23505"
-            ? "Não foi possível reservar esse horário. Escolha outro horário."
-            : "Não foi possível confirmar sua reserva. Confira a disponibilidade antes de tentar novamente.";
+        if (erro?.code === "23505" || (erro?.code === "23514" && erro.message === "Horário indisponível.")) {
+            mensagemReserva = "Não foi possível reservar esse horário. Escolha outro horário.";
+        } else if (erro?.code === "23514" && erro.message === "Serviço indisponível.") {
+            mensagemReserva = "Este serviço está indisponível. Volte para escolher outro serviço.";
+        } else if (!erro?.status || erro.status >= 500) {
+            mensagemReserva = "A conexão falhou e a reserva pode ter sido registrada. Confira a disponibilidade e entre em contato com a barbearia se tiver dúvidas antes de reservar novamente.";
+        } else {
+            mensagemReserva = "Não foi possível confirmar sua reserva. Confira os dados e a disponibilidade.";
+        }
     } finally {
         enviandoReserva = false;
     }
@@ -766,6 +895,7 @@ function limparPainel() {
     barbeirosCache = [];
 
     areaAdmin.style.display = "none";
+    areaAdmin.removeAttribute("aria-busy");
     formEditar.style.display = "none";
     formEditar.reset();
     editarIndex.value = "";
@@ -787,15 +917,24 @@ function sessaoPainelAtiva(sessao) {
     return Boolean(sessao && sessaoPainel === sessao && sessaoAuth === sessao.auth);
 }
 
-async function confirmarSessaoAuth(auth) {
-    if (!auth || sessaoAuth !== auth) return false;
+async function verificarSessaoAuth(auth) {
+    if (!auth || sessaoAuth !== auth) return "encerrada";
 
     try {
         const { data, error } = await supabaseClient.auth.getSession();
-        return !error && sessaoAuth === auth && identificarSessao(data?.session) === auth.chave;
+        if (sessaoAuth !== auth) return "encerrada";
+        if (error) {
+            return error.status === 401 || error.status === 403 || error.name === "AuthSessionMissingError"
+                ? "encerrada" : "falha";
+        }
+        return identificarSessao(data?.session) === auth.chave ? "atual" : "encerrada";
     } catch {
-        return false;
+        return "falha";
     }
+}
+
+async function confirmarSessaoAuth(auth) {
+    return await verificarSessaoAuth(auth) === "atual";
 }
 
 function loginAtual(tentativa) {
@@ -803,6 +942,7 @@ function loginAtual(tentativa) {
 }
 
 function pedirNovoLogin() {
+    tentativaLogin?.controlador?.abort();
     tentativaLogin = null;
     limparPainel();
     areaLogin.style.display = "block";
@@ -829,6 +969,10 @@ formLogin.addEventListener("submit", async (e) => {
 
     const botao = formLogin.querySelector('button[type="submit"]');
     if (botao.disabled || encerrandoSessao) return;
+    if (!formatoFusoBarbearia) {
+        erroLogin.textContent = "O fuso horário da barbearia precisa ser configurado.";
+        return;
+    }
     botao.disabled = true;
     erroLogin.textContent = "";
     statusLoginAdmin.textContent = "Entrando…";
@@ -891,7 +1035,8 @@ formLogin.addEventListener("submit", async (e) => {
             controlador: new AbortController(), operacoesPendentes: new Set()
         };
         statusLoginAdmin.textContent = "Carregando o painel…";
-        const dados = await consultarDadosPainel(sessao);
+        tentativa.controlador = sessao.controlador;
+        const dados = await consultarDadosPainel(sessao, () => loginAtual(tentativa));
         if (!loginAtual(tentativa)) return;
         if (!await confirmarSessaoAuth(tentativa.auth) || !loginAtual(tentativa)) {
             if (tentativaLogin === tentativa) pedirNovoLogin();
@@ -920,7 +1065,10 @@ formLogin.addEventListener("submit", async (e) => {
             erroLogin.textContent = "Não foi possível carregar o painel. Tente novamente.";
         }
     } finally {
-        if (tentativaLogin === tentativa) tentativaLogin = null;
+        if (tentativaLogin === tentativa) {
+            if (!sessaoPainel) tentativa.controlador?.abort();
+            tentativaLogin = null;
+        }
         statusLoginAdmin.textContent = "";
         botao.disabled = false;
     }
@@ -929,6 +1077,7 @@ formLogin.addEventListener("submit", async (e) => {
 btnVoltar.addEventListener("click", async () => {
     if (encerrandoSessao) return;
     encerrandoSessao = true;
+    tentativaLogin?.controlador?.abort();
     tentativaLogin = null;
     limparPainel();
     formLogin.reset();
@@ -1029,23 +1178,32 @@ function operacaoPendente(sessao, chave) {
     return Boolean(sessao?.operacoesPendentes.has(chave));
 }
 
+function podeGerenciarDisponibilidade(sessao) {
+    return sessaoPainelAtiva(sessao) && sessao.tipo === "admin";
+}
+
 function atualizarControlesPendentes() {
-    const edicaoPendente = operacaoPendente(sessaoPainel, camposEdicao.dataset.operacao);
+    const recarregando = Boolean(sessaoPainel?.recarregando);
+    const podeAlterar = podeGerenciarDisponibilidade(sessaoPainel) && !recarregando;
+    const edicaoPendente = recarregando || operacaoPendente(sessaoPainel, camposEdicao.dataset.operacao);
+    btnRecarregarAgendamentos.disabled = !sessaoPainel || recarregando || sessaoPainel.operacoesPendentes.size > 0;
     camposEdicao.disabled = edicaoPendente;
     areaAdmin.querySelectorAll("[data-operacao]").forEach(controle => {
-        controle.disabled = operacaoPendente(sessaoPainel, controle.dataset.operacao) ||
+        controle.disabled = recarregando || operacaoPendente(sessaoPainel, controle.dataset.operacao) ||
             (edicaoPendente && controle.classList.contains("btn-editar"));
     });
 
     for (const [formulario, chave] of [[formHorario, `horario:${novoHorario.value}`],
         [formDataBloqueada, `bloqueio:${novaDataBloqueada.value}`]]) {
         const pendente = operacaoPendente(sessaoPainel, chave);
-        formulario.querySelectorAll("button, input").forEach(controle => { controle.disabled = pendente; });
+        formulario.querySelectorAll("button, input").forEach(controle => {
+            controle.disabled = !podeAlterar || pendente;
+        });
     }
 }
 
 async function executarOperacaoPainel(sessao, chave, status, executar, sucesso, falha) {
-    if (!sessaoPainelAtiva(sessao) || operacaoPendente(sessao, chave)) return false;
+    if (!sessaoPainelAtiva(sessao) || sessao.recarregando || operacaoPendente(sessao, chave)) return false;
 
     sessao.operacoesPendentes.add(chave);
     atualizarControlesPendentes();
@@ -1054,8 +1212,16 @@ async function executarOperacaoPainel(sessao, chave, status, executar, sucesso, 
         if (!await executar() || !sessaoPainelAtiva(sessao)) return false;
         status.textContent = sucesso;
         return true;
-    } catch {
-        if (sessaoPainelAtiva(sessao)) status.textContent = falha;
+    } catch (erro) {
+        if (sessaoPainelAtiva(sessao)) {
+            if (erro === OPERACAO_SEM_LINHA) {
+                status.textContent = "Registro indisponível para esta sessão. Nenhuma alteração foi confirmada.";
+            } else if (erro?.code === "42501" || erro?.status === 403) {
+                status.textContent = "Você não tem permissão para realizar esta operação.";
+            } else {
+                status.textContent = falha;
+            }
+        }
         return false;
     } finally {
         sessao.operacoesPendentes.delete(chave);
@@ -1064,11 +1230,27 @@ async function executarOperacaoPainel(sessao, chave, status, executar, sucesso, 
 }
 
 function renderizarDiasAdmin() {
+    const podeAlterar = podeGerenciarDisponibilidade(sessaoPainel);
+    disponibilidadeLeitura.hidden = podeAlterar;
+    formHorario.hidden = !podeAlterar;
+    formDataBloqueada.hidden = !podeAlterar;
     checkboxesDia.forEach(checkbox => {
+        const ativo = Boolean(diasDisponiveisCache[checkbox.dataset.dia]);
+        const label = checkbox.parentElement;
+        let situacao = label.querySelector(".situacao-dia");
+        if (!situacao) {
+            situacao = document.createElement("span");
+            situacao.className = "situacao-dia";
+            label.appendChild(situacao);
+        }
+        checkbox.hidden = !podeAlterar;
+        situacao.hidden = podeAlterar;
+        situacao.textContent = ativo ? "Disponível" : "Indisponível";
         if (!operacaoPendente(sessaoPainel, checkbox.dataset.operacao)) {
-            checkbox.checked = Boolean(diasDisponiveisCache[checkbox.dataset.dia]);
+            checkbox.checked = ativo;
         }
     });
+    atualizarControlesPendentes();
 }
 
 checkboxesDia.forEach(checkbox => {
@@ -1077,6 +1259,7 @@ checkboxesDia.forEach(checkbox => {
     checkbox.dataset.operacao = chave;
     checkbox.addEventListener("change", async () => {
         const sessao = sessaoPainel;
+        if (!podeGerenciarDisponibilidade(sessao)) return;
         await executarOperacaoPainel(sessao, chave, statusPainel.dias,
             () => salvarDiaDisponivelSupabase(sessao, dia, checkbox.checked),
             "Dia atualizado.", "Não foi possível atualizar o dia.");
@@ -1089,7 +1272,7 @@ formHorario.addEventListener("submit", async e => {
     const sessao = sessaoPainel;
     const horario = novoHorario.value;
     const chave = `horario:${horario}`;
-    if (!sessaoPainelAtiva(sessao) || !horario || operacaoPendente(sessao, chave)) return;
+    if (!podeGerenciarDisponibilidade(sessao) || !horario || operacaoPendente(sessao, chave)) return;
     if (horariosDisponiveisCache.some(item => item.horario === horario)) {
         statusPainel.horarios.textContent = "Esse horário já está na lista.";
         return;
@@ -1105,6 +1288,7 @@ formHorario.addEventListener("submit", async e => {
 
 function renderizarHorariosAdmin() {
     const sessao = sessaoPainel;
+    const podeAlterar = podeGerenciarDisponibilidade(sessao);
     listaHorariosAdmin.replaceChildren();
     if (horariosDisponiveisCache.length === 0) {
         mostrarListaVazia(listaHorariosAdmin, "Nenhum horário configurado.");
@@ -1120,6 +1304,11 @@ function renderizarHorariosAdmin() {
         const chave = `horario:${horario}`;
 
         linha.className = "horario-admin-item";
+        if (!podeAlterar) {
+            linha.textContent = `${horario} · ${ativo ? "Disponível" : "Indisponível"}`;
+            listaHorariosAdmin.appendChild(linha);
+            return;
+        }
         checkbox.type = "checkbox";
         checkbox.checked = ativo;
         checkbox.dataset.operacao = chave;
@@ -1134,6 +1323,7 @@ function renderizarHorariosAdmin() {
         remover.setAttribute("aria-label", `Remover horário ${horario}`);
 
         checkbox.addEventListener("change", async () => {
+            if (!podeGerenciarDisponibilidade(sessao)) return;
             const salvo = await executarOperacaoPainel(sessao, chave, statusPainel.horarios,
                 () => salvarHorarioDisponivelSupabase(sessao, horario, checkbox.checked),
                 "Horário atualizado.", "Não foi possível atualizar o horário.");
@@ -1143,7 +1333,7 @@ function renderizarHorariosAdmin() {
         });
 
         remover.addEventListener("click", async () => {
-            if (!sessaoPainelAtiva(sessao) || operacaoPendente(sessao, chave)) return;
+            if (!podeGerenciarDisponibilidade(sessao) || operacaoPendente(sessao, chave)) return;
             if (!confirm(`Remover o horário ${horario}?`)) return;
             const removido = await executarOperacaoPainel(sessao, chave, statusPainel.horarios,
                 () => removerHorarioSupabase(sessao, horario),
@@ -1205,6 +1395,11 @@ function renderizarDatasBloqueadas() {
 
         linha.className = "data-bloqueada-item";
         texto.textContent = formatarData(data);
+        if (!podeGerenciarDisponibilidade(sessao)) {
+            linha.appendChild(texto);
+            listaDatasBloqueadas.appendChild(linha);
+            return;
+        }
         remover.type = "button";
         remover.textContent = "Remover";
         remover.className = "btn-excluir pequeno";
@@ -1213,7 +1408,7 @@ function renderizarDatasBloqueadas() {
         remover.setAttribute("aria-label", `Remover bloqueio de ${formatarData(data)}`);
 
         remover.addEventListener("click", async () => {
-            if (!sessaoPainelAtiva(sessao) || operacaoPendente(sessao, chave)) return;
+            if (!podeGerenciarDisponibilidade(sessao) || operacaoPendente(sessao, chave)) return;
             if (!confirm(`Remover bloqueio de ${formatarData(data)}?`)) return;
             const removido = await executarOperacaoPainel(sessao, chave, statusPainel.bloqueios,
                 () => removerDataBloqueadaSupabase(sessao, data),
@@ -1241,11 +1436,14 @@ function emOrdemCronologica(agendamentos) {
 
 function agendamentosFiltrados() {
     const termo = buscaAgendamento.value.trim().toLowerCase();
+    const telefone = /^[+\d(). -]+$/.test(termo) ? termo.replace(/\D/g, "") : "";
     const data = filtroData.value;
 
     return emOrdemCronologica(filtrarPorProfissional(agendamentosPrivados).filter(item => {
         const texto = [item.nome, item.servico, item.whatsapp].join(" ").toLowerCase();
-        return (!termo || texto.includes(termo)) && (!data || item.data === data);
+        const combina = !termo || texto.includes(termo) ||
+            (telefone && String(item.whatsapp).replace(/\D/g, "").includes(telefone));
+        return combina && (!data || item.data === data);
     }));
 }
 
@@ -1263,7 +1461,7 @@ function criarAcoesAgendamento(sessao, item) {
         botao.textContent = texto;
         botao.dataset.id = item.id;
         botao.dataset.operacao = `agendamento:${item.id}`;
-        botao.disabled = operacaoPendente(sessao, botao.dataset.operacao) ||
+        botao.disabled = sessao.recarregando || operacaoPendente(sessao, botao.dataset.operacao) ||
             (classe === "btn-editar" && operacaoPendente(sessao, camposEdicao.dataset.operacao));
         botao.setAttribute("aria-label", `${texto} agendamento de ${item.nome || "cliente"}`);
         botao.addEventListener("click", () => {
@@ -1335,12 +1533,13 @@ function criarCelula(valor) {
 }
 
 function atualizarAgendaPainel(agora = new Date()) {
+    if (!formatoFusoBarbearia) return;
     const agendamentos = emOrdemCronologica(filtrarPorProfissional(agendamentosPrivados));
     const hoje = dataAtualISO(agora);
     const mes = hoje.slice(0, 7);
     const atendimentosHoje = agendamentos.filter(item => item.data === hoje);
-    const proximos = agendamentos.filter(item => item.data && item.horario &&
-        new Date(`${item.data}T${item.horario}:00`) > agora);
+    const proximos = agendamentos.filter(item => item.data >= hoje && item.horario &&
+        horarioFuturo(item.data, item.horario, agora));
 
     agendaAdminData.dateTime = hoje;
     agendaAdminData.textContent = formatarData(hoje);
@@ -1352,6 +1551,7 @@ function atualizarAgendaPainel(agora = new Date()) {
 }
 
 function renderizarFaturamento() {
+    if (!formatoFusoBarbearia) return;
     const mesSelecionado = filtroMesFaturamento.value || mesAtualISO();
     const agendamentosMes = agendamentosPrivados.filter(item => {
         return item.data && item.data.slice(0, 7) === mesSelecionado;
@@ -1448,6 +1648,41 @@ filtroData.addEventListener("change", renderizarAgendamentos);
 filtroMesFaturamento.addEventListener("change", renderizarFaturamento);
 btnExportarCsv.addEventListener("click", exportarAgendamentosCsv);
 
+btnRecarregarAgendamentos.addEventListener("click", async () => {
+    const sessao = sessaoPainel;
+    if (!sessaoPainelAtiva(sessao) || sessao.recarregando || sessao.operacoesPendentes.size) return;
+    sessao.recarregando = true;
+    areaAdmin.setAttribute("aria-busy", "true");
+    atualizarControlesPendentes();
+    statusPainel.agendamentos.textContent = "Carregando agendamentos…";
+    try {
+        const estado = await verificarSessaoAuth(sessao.auth);
+        if (!sessaoPainelAtiva(sessao)) return;
+        if (estado === "encerrada") {
+            pedirNovoLogin();
+            return;
+        }
+        if (estado === "falha") throw new Error("Não foi possível verificar a sessão.");
+        const itens = await consultarAgendamentosPrivados(sessao, () => sessaoPainelAtiva(sessao));
+        if (!sessaoPainelAtiva(sessao)) return;
+        agendamentosPrivados = itens;
+        renderizarAgendamentos();
+        atualizarAgendaPainel();
+        renderizarFaturamento();
+        statusPainel.agendamentos.textContent = "Lista de agendamentos atualizada.";
+    } catch {
+        if (sessaoPainelAtiva(sessao)) {
+            statusPainel.agendamentos.textContent = "Falha ao atualizar. A lista continua com os últimos dados carregados.";
+        }
+    } finally {
+        sessao.recarregando = false;
+        if (sessaoPainelAtiva(sessao)) {
+            areaAdmin.removeAttribute("aria-busy");
+            atualizarControlesPendentes();
+        }
+    }
+});
+
 btnLimparFiltros.addEventListener("click", () => {
     buscaAgendamento.value = "";
     filtroData.value = "";
@@ -1461,7 +1696,7 @@ formDataBloqueada.addEventListener("submit", async e => {
     const sessao = sessaoPainel;
     const data = novaDataBloqueada.value;
     const chave = `bloqueio:${data}`;
-    if (!sessaoPainelAtiva(sessao) || !data || operacaoPendente(sessao, chave)) return;
+    if (!podeGerenciarDisponibilidade(sessao) || !data || operacaoPendente(sessao, chave)) return;
     if (datasBloqueadasCache.includes(data)) {
         statusPainel.bloqueios.textContent = "Essa data já está bloqueada.";
         return;
@@ -1483,6 +1718,17 @@ function abrirEdicao(id) {
     editarIndex.value = id;
     editarNome.value = agendamentoItem.nome;
     editarWhatsapp.value = agendamentoItem.whatsapp;
+    editarServico.replaceChildren();
+    const opcoes = new Map(servicosDaInstalacao);
+    if (!opcoes.has(agendamentoItem.servico)) {
+        opcoes.set(agendamentoItem.servico, `${agendamentoItem.servico} (serviço registrado)`);
+    }
+    for (const [codigo, rotulo] of opcoes) {
+        const opcao = document.createElement("option");
+        opcao.value = codigo;
+        opcao.textContent = rotulo;
+        editarServico.append(opcao);
+    }
     editarServico.value = agendamentoItem.servico;
     editarData.value = agendamentoItem.data;
     editarHorario.value = agendamentoItem.horario;
@@ -1512,16 +1758,40 @@ formEditar.addEventListener("submit", async e => {
     const sessao = sessaoPainel;
     if (!sessaoPainelAtiva(sessao)) return;
     const agendamentoItem = agendamentosPrivados.find(item => String(item.id) === editarIndex.value);
-    if (!agendamentoItem || !formEditar.reportValidity()) return;
+    if (!agendamentoItem) {
+        statusPainel.edicao.textContent = "Registro indisponível para esta sessão. Nenhuma alteração foi confirmada.";
+        return;
+    }
+    if (!formEditar.reportValidity()) return;
+
+    const nome = editarNome.value.trim();
+    const whatsapp = normalizarWhatsapp(editarWhatsapp.value);
+    const servico = editarServico.value;
+    if (!nome || !whatsapp) {
+        statusPainel.edicao.textContent = nome ? "Informe um WhatsApp com 10 a 15 dígitos." : "Preencha o nome.";
+        (nome ? editarWhatsapp : editarNome).focus();
+        return;
+    }
+    if (servico !== agendamentoItem.servico && !servicosDaInstalacao.has(servico)) {
+        statusPainel.edicao.textContent = "Escolha um serviço do catálogo da barbearia.";
+        editarServico.focus();
+        return;
+    }
+    if ((editarData.value !== agendamentoItem.data || editarHorario.value !== agendamentoItem.horario) &&
+        !horarioFuturo(editarData.value, editarHorario.value)) {
+        statusPainel.edicao.textContent = "Escolha uma data e um horário futuros na barbearia.";
+        editarHorario.focus();
+        return;
+    }
 
     const id = agendamentoItem.id;
     const agendamentoAtualizado = {
-        nome: editarNome.value.trim(),
-        whatsapp: editarWhatsapp.value.trim(),
-        servico: editarServico.value.trim(),
+        nome,
+        whatsapp,
         data: editarData.value,
         horario: editarHorario.value
     };
+    if (servico !== agendamentoItem.servico) agendamentoAtualizado.servico = servico;
 
     const salvo = await executarOperacaoPainel(sessao, `agendamento:${id}`, statusPainel.edicao,
         () => atualizarAgendamentoSupabase(sessao, id, agendamentoAtualizado),
@@ -1541,7 +1811,7 @@ btnCancelarEdicao.addEventListener("click", () => {
 
 async function excluirAgendamento(sessao, id) {
     const chave = `agendamento:${id}`;
-    if (!sessaoPainelAtiva(sessao) || operacaoPendente(sessao, chave)) return;
+    if (!sessaoPainelAtiva(sessao) || sessao.recarregando || operacaoPendente(sessao, chave)) return;
     if (!agendamentosPrivados.some(item => item.id === id)) return;
     if (!confirm("Deseja realmente excluir este agendamento?")) return;
 
@@ -1556,4 +1826,13 @@ async function excluirAgendamento(sessao, id) {
     renderizarFaturamento();
 }
 
+if (typeof window !== "undefined") {
+    window.addEventListener("focus", atualizarDiaDisponibilidade);
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) atualizarDiaDisponibilidade();
+    });
+    window.setInterval(() => {
+        if (!document.hidden) atualizarDiaDisponibilidade();
+    }, 60000);
+}
 carregarDisponibilidadePublica();

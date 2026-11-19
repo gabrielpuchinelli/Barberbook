@@ -6,11 +6,32 @@ Cada barbearia usa um projeto Supabase próprio. As migrações em `supabase/mig
 
 1. Crie um projeto Supabase vazio e escolha o fuso IANA da barbearia. Mantenha `public` na Data API e `barberbook_private` fora dos schemas expostos. Desative grants automáticos para novos objetos, se essa opção estiver disponível no projeto, e confira os grants efetivos após aplicar as migrações.
 2. Aplique os três arquivos de migração em ordem. Pelo `psql`, `supabase-schema.sql` inclui os arquivos na ordem correta. Pelo fluxo de migrações do Supabase, aplique diretamente o diretório versionado. Escolha um caminho para a instalação. O executor precisa ser proprietário dos objetos criados, poder referenciar `auth.users(id)` e poder criar e conceder os dois papéis internos sem login. O arquivo de entrada usa diretivas do `psql`.
-3. Revise e aplique manualmente `supabase/configuracao/instalacao.exemplo.sql` como configuração da loja. Ele inclui fuso, catálogo e horários de exemplo. Ajuste dias e horários antes de abrir a agenda. Os códigos do catálogo precisam coincidir com `data-servico` em `index.html`. Mantenha também os preços visíveis alinhados ao catálogo enquanto o HTML for a fonte da apresentação.
+3. Revise e aplique manualmente `supabase/configuracao/instalacao.exemplo.sql` como configuração da loja. Ele inclui fuso, catálogo e horários de exemplo. Ajuste dias e horários antes de abrir a agenda. Sincronize a configuração pública conforme a seção abaixo.
 4. Crie as contas de equipe no Supabase Auth por um canal administrativo. Pela administração do banco, associe o UUID de cada conta em `barberbook_private.perfis`. Um administrador tem papel `admin` e `barbeiro_id` nulo. Para um barbeiro, crie primeiro o registro em `public.barbeiros` e informe seu ID no perfil com papel `barbeiro`. Configure a URL e a chave pública apenas na implantação correspondente. O cadastro público de contas é dispensável para o agendamento.
 5. Verifique com dados fictícios o fluxo público e dois perfis de equipe. Confirme as três colunas da view, a ausência de PII para visitantes, o escopo de cada profissional e a proteção contra reservas simultâneas. Antes de promover a implantação, registre a versão do PostgreSQL, os arquivos aplicados e o procedimento de backup.
 
 A configuração da loja é aplicada separadamente dos dados de teste. Nenhuma migração cria contas, profissionais ou reservas. Sem instalação e disponibilidade configuradas, a agenda pública fica sem opções e a criação de reserva é rejeitada.
+
+## Sincronizar a configuração pública
+
+Defina `FUSO_BARBEARIA` em `js/config.js` com o mesmo identificador IANA cadastrado em `barberbook_private.instalacao`. Em `index.html`, publique um cartão por serviço ativo, com o código exato em `data-servico` e o preço em BRL em `data-preco` e no texto visível. Os mesmos cartões alimentam as opções da edição administrativa. Em registros históricos, é possível manter o serviço registrado e seu preço original.
+
+Antes de publicar, e sempre que alterar fuso ou catálogo, valide a correspondência com Node.js. No stack local, com o `psql` configurado para o banco local, execute a partir da raiz do repositório:
+
+```sh
+psql -X -Atq -v ON_ERROR_STOP=1 -c "
+select jsonb_build_object(
+  'fuso', i.fuso,
+  'servicos', (select jsonb_agg(jsonb_build_object(
+    'codigo', s.codigo,
+    'preco', 'R$ ' || replace(s.preco::text, '.', ',')
+  )) from barberbook_private.servicos s where s.ativo)
+)
+from barberbook_private.instalacao i;
+" | node tests/database/verificar-configuracao.mjs
+```
+
+O verificador compara o fuso, os códigos ativos e os preços publicados. A exportação contém somente metadados públicos do catálogo e do fuso. Os clientes da Data API continuam sem acesso às tabelas privadas de configuração. O banco calcula o preço gravado na reserva a partir do catálogo ativo e mantém o preço histórico em alterações que preservam o serviço. A publicação do HTML e a atualização do catálogo precisam ser coordenadas pelo operador.
 
 ## Permissões e consistência
 
@@ -32,11 +53,12 @@ A chave única contém profissional, data e horário. Escritas que afetam a agen
 
 ## Compatibilidade com a interface e pendências
 
-- O insert público conserva o payload atual. O banco grava nome do profissional e preço a partir dos cadastros canônicos. `preco` continua texto em BRL para os indicadores e o CSV. Ao trocar o serviço na edição, o valor canônico do novo serviço é gravado. Ao manter o mesmo serviço, a edição preserva o preço do registro. O campo livre atual pode enviar um código inexistente ou inativo e receber o erro genérico da tela.
-- O WhatsApp é validado e gravado com 10 a 15 dígitos e sinal `+` opcional. Formatação enviada pelo navegador é removida. Busca e CSV passam a usar a forma armazenada.
-- A tela pública ainda calcula datas e horários usando o relógio do navegador. Um dispositivo em outro fuso pode mostrar uma opção que o banco rejeitará. Trocar o fuso de uma loja com reservas existentes muda a interpretação futura dos horários locais. Defina o fuso antes do uso e trate alterações posteriores como uma operação de manutenção.
-- O painel oferece controles de disponibilidade aos dois perfis. O banco concede a escrita da configuração geral só ao administrador. Uma edição sem autorização pode vir como zero linhas afetadas. O frontend atual não verifica a contagem de remoções, portanto pode informar sucesso na interface quando a exclusão foi barrada por RLS. O ajuste da interface precisa de aprovação separada.
-- O frontend ainda não pagina a ocupação pública nem o histórico. Teste o limite de linhas da Data API com a capacidade da loja antes de liberar a instalação. A restrição do banco continua garantindo exclusividade mesmo se a tela estiver incompleta.
+- O insert público envia código do serviço, horário local, profissional e contato, com retorno mínimo. O banco grava o nome do profissional e o preço canônico. `preco` continua em texto BRL para os indicadores e o CSV.
+- O WhatsApp é validado e gravado com 10 a 15 dígitos e sinal `+` opcional. A pesquisa aceita número formatado e o CSV usa a forma armazenada.
+- A interface converte o instante do dispositivo para o fuso IANA da barbearia. A precisão do relógio do dispositivo e as versões da base de fusos ainda podem diferir do servidor. Trocar o fuso de uma loja com reservas existentes muda a interpretação dos horários locais e requer manutenção coordenada.
+- Barbeiros têm acesso de leitura à disponibilidade e podem editar ou excluir seus próprios agendamentos. Escritas confirmam o retorno da linha afetada. Para sucesso HTTP com zero linhas, a interface informa que o registro está indisponível para a sessão. A RLS pode produzir a mesma resposta para um registro removido ou fora do escopo, e a recarga usa a listagem autorizada.
+- A projeção privada lê `agendamentos.id` como texto pela Data API para preservar a precisão do `bigint` nos filtros de edição e exclusão. O ID do profissional continua sendo o UUID recebido das RPCs e da lista de profissionais.
+- As consultas paginam por deslocamento pela Data API, com ordenação estável e contagem exata. Uma falha ou inconsistência detectada em qualquer página pública invalida a consulta inteira. Cada página é lida em uma requisição separada. Uma contagem constante não garante uma fotografia consistente do banco, pois alterações concorrentes podem trocar linhas entre páginas sem mudar o total. A disponibilidade continua sujeita à validação transacional na gravação.
 - RLS não oferece controle de abuso da criação pública. Antes de liberar publicamente, defina a estratégia de limitação de reservas abusivas e de tratamento dos CSVs exportados.
 
 ## Testes locais com dados fictícios
@@ -47,4 +69,6 @@ No PostgreSQL local vazio, use `psql` como operador da instância. Em uma primei
 
 Para concorrência, prepare outro banco vazio com nome começando por `barberbook_test_`, com o esquema Auth de teste e as mesmas migrações. Defina `PGDATABASE` e `PGHOST` para esse banco e execute `bash tests/database/concorrencia.sh`. O script aceita socket Unix ou loopback, verifica que duas conexões disputam o lock, testa os resultados e deixa os dados fictícios no banco descartável. Se repetir em um banco novo no mesmo cluster, reaproveite os papéis globais `anon`, `authenticated` e `service_role` no bootstrap.
 
-O aceite da integração Supabase inclui reaplicar as migrações no stack local, rodar os testes de banco com Auth real e validar as consultas atuais do navegador pela Data API. Mantenha esses resultados separados dos testes nativos de PostgreSQL e dos testes de interface com mocks.
+O aceite da integração Supabase inclui reaplicar as migrações no stack local, validar a configuração pública e rodar os testes de banco com Auth real. Sirva uma cópia do frontend com URL e chave pública do stack local, usando clientes, profissionais e contas fictícias. No navegador, valide a reserva pública, o login sem perfil, os escopos de barbeiro e administrador, a disponibilidade, os retornos de zero linhas, o CSV e o logout com requisição pendente. Valide também a falha de uma página intermediária e a recuperação sem reenvio automático. Mantenha esses resultados separados dos testes nativos de PostgreSQL e dos testes com mocks.
+
+As regressões automatizadas do frontend podem ser executadas com `node --test tests/*.test.mjs`. O teste de listagem usa Chrome ou Chromium headless, com caminho configurável em `CHROME_BIN`.

@@ -400,6 +400,14 @@ footer{background:#0a1320;border-top:1px solid var(--bb-border);padding:35px 20p
 @media(max-width:768px){header{padding:12px 20px;gap:12px}.logo img{width:54px;height:54px}.logo h1{font-size:1.55rem}.admin-resumo{grid-template-columns:1fr}.admin-card,.login-box{padding:20px}.form-horario,.form-data-bloqueada{grid-template-columns:1fr}.form-horario button,.form-data-bloqueada button,.btn-secundario,.input-mes-faturamento{width:auto;max-width:none}.filtros-admin{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}button{transition:none}}
 
+#editar-servico {
+    padding: 8px 10px;
+    border: 1px solid var(--bb-border);
+    border-radius: 10px;
+    background: var(--bb-surface-2);
+    color: var(--bb-text);
+}
+
 #area-admin,
 #area-login {
     width: min(1180px, calc(100% - 24px));

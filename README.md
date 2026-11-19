@@ -50,7 +50,7 @@ docs/
 
 1. Clone o repositório e abra-o no VS Code.
 2. Sirva os arquivos por um servidor HTTP local (por exemplo, a extensão Live Server), em vez de abrir `index.html` diretamente pelo sistema de arquivos.
-3. Confira a configuração do cliente Supabase em `js/config.js`. Para cada instalação comercial, use o projeto Supabase próprio da barbearia.
+3. Configure o cliente para o Supabase local ao testar. Para cada instalação comercial, use o projeto próprio da barbearia e valide o fuso IANA e o catálogo público com o guia do Supabase.
 4. Abra a URL local e verifique o fluxo público e o login administrativo.
 
 **Importante:** a chave pública anon/publishable do Supabase não concede segurança por si só. É obrigatório validar RLS, grants, views e RPCs. Nunca inclua uma chave `service_role` ou credenciais privadas no frontend. Não há usuário/senha administrativo padrão garantido: os usuários devem ser provisionados pelo Supabase Auth conforme as permissões efetivas do banco.
