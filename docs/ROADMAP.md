@@ -52,8 +52,11 @@
 - [x] Conferir o fuso, os códigos e os preços publicados com a configuração de cada instalação.
 - [x] Paginar as consultas da Data API e bloquear a disponibilidade se uma página necessária falhar.
 - [x] Validar reservas em Chrome com toque emulado a 320, 360, 375 e 390 px e validar autenticação, permissões e operações administrativas com um stack Supabase local.
-- [ ] Definir e testar proteção contra abuso de reservas públicas.
-- [ ] Definir e validar as regras de conflito para serviços com durações sobrepostas.
+- [x] Implementar e testar localmente Turnstile, cotas e corte do INSERT pela Data API (6C).
+- [ ] Validar Turnstile real, pooler e TLS no ambiente hospedado e obter aprovação para publicação e corte por instalação.
+- [ ] Executar o [checklist da Etapa 6D](IMPLANTACAO.md) para validar a implantação, o rollback e os fluxos em smartphones físicos.
+- [x] Implementar duração contratada, expediente com pausas e integridade de intervalos no banco (6A).
+- [x] Integrar a consulta de horários elegíveis e o tratamento de conflitos ao fluxo público (6B).
 
 ## Fase 5 — Evolução opcional
 - [ ] Avaliar React + TypeScript, conforme benefício e aprovação.
@@ -61,4 +64,4 @@
 - [ ] Melhorar observabilidade e procedimentos de manutenção.
 
 ## Próxima tarefa para o Codex
-Após a revisão da integração, priorizar a proteção contra abuso e as validações em smartphones físicos.
+Após a revisão do corte local, validar a implantação da proteção em ambiente hospedado e em smartphones físicos.

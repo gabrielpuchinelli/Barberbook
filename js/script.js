@@ -13,6 +13,10 @@ const barbeirosSection = document.getElementById("barbeiros");
 const listaBarbeiros = document.getElementById("lista-barbeiros");
 const dadosCliente = document.getElementById("dados-cliente");
 const formAgendamento = document.getElementById("form-agendamento");
+const quadroTurnstile = document.getElementById("turnstile-reserva");
+const avisoTurnstile = document.getElementById("aviso-turnstile");
+const btnRenovarTurnstile = document.getElementById("btn-renovar-turnstile");
+const btnEncerrarTentativa = document.getElementById("btn-encerrar-tentativa");
 const introducaoAgendamento = document.getElementById("introducao-agendamento");
 const etapasAgendamento = [servicos, barbeirosSection, agendamento, dadosCliente];
 const indicadoresEtapa = document.querySelectorAll(".booking-steps li");
@@ -110,11 +114,17 @@ const NOMES_DIAS = {
 let disponibilidadePublica = null;
 let estadoDisponibilidade = "carregando";
 let consultaDisponibilidade = 0;
+let consultaHorarios = null;
 let etapaAgendamento = servicos;
 let reserva = {};
 let reservaConfirmada = false;
 let enviandoReserva = false;
 let mensagemReserva = "";
+let tentativaReserva = null;
+let desafioReserva = null;
+let scriptTurnstile = null;
+let mensagemConfirmacao = "";
+let aguardarReservaAte = 0;
 let agendamentosPrivados = [];
 let diasDisponiveisCache = {};
 let horariosDisponiveisCache = [];
@@ -190,26 +200,21 @@ async function consultarPaginas(tabela, campos, ordem, atual, filtrar = consulta
 }
 
 async function consultarConfiguracaoAgenda(atual, sinal) {
-    const [dias, horarios, bloqueios, barbeiros] = await Promise.all([
+    const [dias, bloqueios, barbeiros] = await Promise.all([
         consultarPaginas("dias_disponiveis", "dia_semana, ativo", ["dia_semana"], atual, undefined, sinal),
-        consultarPaginas("horarios_disponiveis", "horario, ativo", ["horario"], atual, undefined, sinal),
         consultarPaginas("datas_bloqueadas", "data", ["data"], atual, undefined, sinal),
         consultarPaginas("barbeiros", "id, nome", ["nome", "id"], atual, consulta => consulta.eq("ativo", true), sinal)
     ]);
 
     return {
         dias: Object.fromEntries(dias.map(item => [item.dia_semana, item.ativo])),
-        horarios: horarios.map(item => ({
-            horario: item.horario.slice(0, 5),
-            ativo: item.ativo
-        })),
         datasBloqueadas: bloqueios.map(item => item.data),
         barbeiros: barbeiros.filter(item => idBarbeiroValido(item.id))
     };
 }
 
 async function carregarDisponibilidadePublica() {
-    if (enviandoReserva) return;
+    if (enviandoReserva || tentativaReserva?.incerta) return;
     if (!formatoFusoBarbearia) {
         estadoDisponibilidade = "configuracao";
         renderizarEtapaAgendamento();
@@ -220,6 +225,7 @@ async function carregarDisponibilidadePublica() {
     const dia = dataAtualISO();
     const atual = () => consulta === consultaDisponibilidade;
     const etapaAnterior = etapaAgendamento;
+    consultaHorarios = null;
     if (!reservaConfirmada) {
         reserva.horario = null;
         if (etapaAgendamento === dadosCliente) etapaAgendamento = agendamento;
@@ -229,23 +235,11 @@ async function carregarDisponibilidadePublica() {
     renderizarEtapaAgendamento(etapaAnterior !== etapaAgendamento);
 
     try {
-        const [ocupacoes, configuracao] = await Promise.all([
-            consultarPaginas("agendamentos_publicos", "data, horario, barbeiro_id",
-                ["data", "horario", "barbeiro_id"], atual),
-            consultarConfiguracaoAgenda(atual)
-        ]);
+        const configuracao = await consultarConfiguracaoAgenda(atual);
         if (!atual()) return;
         if (dia !== dataAtualISO()) return carregarDisponibilidadePublica();
 
-        disponibilidadePublica = {
-            ...configuracao,
-            dia,
-            ocupacoes: ocupacoes.map(({ data, horario, barbeiro_id }) => ({
-                data,
-                horario: horario.slice(0, 5),
-                barbeiro_id
-            }))
-        };
+        disponibilidadePublica = { dia, ...configuracao };
         estadoDisponibilidade = "disponivel";
     } catch {
         if (!atual()) return;
@@ -263,6 +257,9 @@ async function carregarDisponibilidadePublica() {
         if (!dataDisponivel(reserva.data)) reserva.data = null;
     }
     renderizarEtapaAgendamento(etapaEmConsulta !== etapaAgendamento);
+    if (etapaAgendamento === agendamento && dataDisponivel(reserva.data)) {
+        await carregarHorariosElegiveis();
+    }
 }
 
 async function consultarAgendamentosPrivados(sessao, atual) {
@@ -277,19 +274,42 @@ async function consultarAgendamentosPrivados(sessao, atual) {
 }
 
 async function consultarDadosPainel(sessao, atual) {
-    const [agendamentos, configuracao] = await Promise.all([
+    const sinal = sessao.controlador.signal;
+    const [agendamentos, configuracao, horarios] = await Promise.all([
         consultarAgendamentosPrivados(sessao, atual),
-        consultarConfiguracaoAgenda(atual, sessao.controlador.signal)
+        consultarConfiguracaoAgenda(atual, sinal),
+        consultarPaginas("horarios_disponiveis", "horario, ativo", ["horario"], atual, undefined, sinal)
     ]);
+    configuracao.horarios = horarios.map(({ horario, ativo }) => ({ horario: horario.slice(0, 5), ativo }));
     return { agendamentos, configuracao };
 }
 
-async function criarAgendamentoSupabase(agendamentoCliente) {
-    const { error, status } = await supabaseClient
-        .from("agendamentos")
-        .insert([agendamentoCliente]);
-
-    if (error) throw { code: error.code, message: error.message, status };
+async function enviarPedidoReserva(pedido, chave, token) {
+    const controlador = new AbortController();
+    const prazo = setTimeout(() => controlador.abort(), 18000);
+    try {
+        // A reserva pública usa só a chave pública, inclusive com o painel autenticado em outra aba.
+        const resposta = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/criar-reserva`, {
+            method: "POST",
+            headers: { "content-type": "application/json", apikey: SUPABASE_ANON_KEY },
+            body: JSON.stringify({ ...pedido, chave, token }),
+            signal: controlador.signal
+        });
+        const dados = await resposta.json();
+        if (resposta.status === 201 && dados?.resultado === "confirmada") return dados;
+        if (resposta.status === 429 && dados?.resultado === "limitada" &&
+            Number.isSafeInteger(dados.tentar_em) && dados.tentar_em > 0 && dados.tentar_em <= 86400) return dados;
+        if ((resposta.status === 409 && ["conflito", "chave_incompativel"].includes(dados?.resultado)) ||
+            (resposta.status === 400 && ["token_invalido", "invalida"].includes(dados?.resultado)) ||
+            (resposta.status === 503 && dados?.resultado === "indisponivel")) return dados;
+        if (resposta.status === 422 && dados?.resultado === "invalida") return { resultado: "revalidar" };
+        if (resposta.status === 403 && dados?.resultado === "origem_invalida") return { resultado: "indisponivel" };
+    } catch {
+        // Uma resposta perdida pode ocorrer depois do commit.
+    } finally {
+        clearTimeout(prazo);
+    }
+    return { resultado: "indeterminada" };
 }
 
 async function executarEscritaPainel(sessao, consultar) {
@@ -453,11 +473,12 @@ function instanteDoHorario(data, horario) {
     for (const offset of deslocamentosDoDia(data)) {
         const candidato = civil - offset;
         const local = dataHoraBarbearia(new Date(candidato));
-        if (local.data === data && local.hora === horario && (instanteValido === null || candidato > instanteValido)) {
+        if (local.data === data && local.hora === horario) {
+            // Dois instantes para o mesmo horário civil indicam ambiguidade.
+            if (instanteValido !== null) return null;
             instanteValido = candidato;
         }
     }
-    // PostgreSQL usa a ocorrência posterior para uma hora civil repetida.
     return instanteValido;
 }
 
@@ -530,7 +551,11 @@ function marcarOpcaoSelecionada(botao, selecionada) {
 }
 
 function mudarEtapaAgendamento(etapa) {
-    if (enviandoReserva) return;
+    if (enviandoReserva || tentativaReserva?.incerta) return;
+    if (etapaAgendamento === dadosCliente && etapa !== dadosCliente) {
+        limparDesafioReserva();
+        mensagemConfirmacao = "";
+    }
     etapaAgendamento = etapa;
     renderizarEtapaAgendamento(true);
 }
@@ -546,12 +571,10 @@ function renderizarEtapaAgendamento(focarTitulo = false) {
     });
 
     btnEtapaAnterior.hidden = indice === 0 || reservaConfirmada;
-    btnEtapaAnterior.disabled = enviandoReserva;
-    btnAdmin.disabled = enviandoReserva;
+    btnEtapaAnterior.disabled = enviandoReserva || Boolean(tentativaReserva?.incerta);
+    btnAdmin.disabled = btnEtapaAnterior.disabled;
 
-    const consultaVisivel = etapaAgendamento === barbeirosSection || etapaAgendamento === agendamento;
-    btnRecarregarDisponibilidade.hidden = !consultaVisivel || estadoDisponibilidade !== "erro";
-    avisoData.textContent = consultaVisivel ? mensagemDisponibilidade() : "";
+    renderizarStatusDisponibilidade();
 
     if (etapaAgendamento === servicos) {
         cardsServico.forEach(card => marcarOpcaoSelecionada(card, card.dataset.servico === reserva.servico?.nome));
@@ -571,6 +594,13 @@ function renderizarEtapaAgendamento(focarTitulo = false) {
     if (focarTitulo && areaCliente.style.display !== "none") {
         etapaAgendamento.querySelector(".titulo-etapa").focus();
     }
+}
+
+function renderizarStatusDisponibilidade() {
+    const consultaVisivel = etapaAgendamento === barbeirosSection || etapaAgendamento === agendamento;
+    const erroHorarios = etapaAgendamento === agendamento && consultaDaSelecao()?.estado === "erro";
+    btnRecarregarDisponibilidade.hidden = !consultaVisivel || (estadoDisponibilidade !== "erro" && !erroHorarios);
+    avisoData.textContent = consultaVisivel ? mensagemDisponibilidade() : "";
 }
 
 function mensagemDisponibilidade() {
@@ -594,6 +624,7 @@ cardsServico.forEach(card => {
 
         const { servico: nome, preco } = card.dataset;
         if (reserva.servico?.nome !== nome) {
+            consultaHorarios = null;
             reserva = { servico: { nome, preco, rotulo: card.querySelector("h3").textContent } };
             mensagemReserva = "";
         }
@@ -619,6 +650,7 @@ function renderizarBarbeirosCliente() {
             if (enviandoReserva || etapaAgendamento !== barbeirosSection ||
                 !disponibilidadePublica?.barbeiros.includes(item)) return;
             if (reserva.barbeiroId !== id) {
+                consultaHorarios = null;
                 reserva.barbeiroId = id;
                 reserva.data = null;
                 reserva.horario = null;
@@ -639,10 +671,46 @@ function dataDisponivel(data) {
     return Boolean(disponibilidadePublica.dias[diaSemana]) && !disponibilidadePublica.datasBloqueadas.includes(data);
 }
 
-function obterHorariosOcupados(data, barbeiroId) {
-    return disponibilidadePublica.ocupacoes
-        .filter(item => item.data === data && String(item.barbeiro_id) === barbeiroId)
-        .map(item => item.horario);
+function consultaDaSelecao() {
+    if (!consultaHorarios || consultaHorarios.servico !== reserva.servico?.nome ||
+        consultaHorarios.barbeiroId !== reserva.barbeiroId || consultaHorarios.data !== reserva.data ||
+        consultaHorarios.dia !== disponibilidadePublica?.dia || !dataDisponivel(reserva.data)) return null;
+    return consultaHorarios;
+}
+
+async function carregarHorariosElegiveis() {
+    if (enviandoReserva || !reserva.servico || !barbeiroSelecionado() || !dataDisponivel(reserva.data)) return false;
+    const consulta = {
+        servico: reserva.servico.nome, barbeiroId: reserva.barbeiroId, data: reserva.data,
+        dia: disponibilidadePublica.dia, estado: "carregando", horarios: []
+    };
+    consultaHorarios = consulta;
+    reserva.horario = null;
+    renderizarStatusDisponibilidade();
+    renderizarHorariosCliente();
+
+    try {
+        const { data, error } = await supabaseClient.rpc("horarios_elegiveis", {
+            p_servico: consulta.servico, p_barbeiro_id: consulta.barbeiroId, p_data: consulta.data
+        });
+        if (consultaDaSelecao() !== consulta) return false;
+        const horarios = data?.horarios;
+        // O total acompanha a lista escalar para rejeitar respostas incompletas ou fora do contrato.
+        if (error || !Array.isArray(horarios) || data.total !== horarios.length || horarios.length > 1440 ||
+            horarios.some((hora, i) => typeof hora !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(hora) ||
+                (i > 0 && hora <= horarios[i - 1]))) {
+            throw new Error("Consulta de horários incompleta.");
+        }
+        consulta.horarios = horarios;
+        consulta.estado = "disponivel";
+    } catch {
+        if (consultaDaSelecao() !== consulta) return false;
+        consulta.estado = "erro";
+    }
+
+    renderizarStatusDisponibilidade();
+    if (etapaAgendamento === agendamento) renderizarHorariosCliente();
+    return consulta.estado === "disponivel";
 }
 
 function horarioFuturo(data, horario, agora = new Date()) {
@@ -651,10 +719,7 @@ function horarioFuturo(data, horario, agora = new Date()) {
 }
 
 function horarioDisponivel(horario) {
-    return dataDisponivel(reserva.data) && Boolean(barbeiroSelecionado()) &&
-        horarioFuturo(reserva.data, horario) &&
-        disponibilidadePublica.horarios.some(item => item.ativo && item.horario === horario) &&
-        !obterHorariosOcupados(reserva.data, reserva.barbeiroId).includes(horario);
+    return Boolean(consultaDaSelecao()?.horarios.includes(horario)) && horarioFuturo(reserva.data, horario);
 }
 
 function renderizarDiasCliente() {
@@ -685,17 +750,19 @@ function renderizarDiasCliente() {
             botao.append(status);
         }
 
-        botao.addEventListener("click", evento => {
+        botao.addEventListener("click", async evento => {
             if (enviandoReserva || etapaAgendamento !== agendamento || !dataDisponivel(data)) return;
             if (reserva.data !== data) {
+                consultaHorarios = null;
                 reserva.data = data;
                 reserva.horario = null;
                 mensagemReserva = "";
-                avisoData.textContent = mensagemDisponibilidade();
             }
             for (const card of diasCliente.children) marcarOpcaoSelecionada(card, card === botao);
-            renderizarHorariosCliente();
-            if (!areaHorarios.hidden && evento.detail > 0 && matchMedia("(pointer: coarse)").matches) {
+            const consulta = consultaDaSelecao();
+            if ((!consulta || consulta.estado === "erro") && !await carregarHorariosElegiveis()) return;
+            if (etapaAgendamento === agendamento && !areaHorarios.hidden &&
+                evento.detail > 0 && matchMedia("(pointer: coarse)").matches) {
                 areaHorarios.querySelector("h3").scrollIntoView({ block: "start" });
             }
         });
@@ -716,46 +783,143 @@ function renderizarHorariosCliente() {
     const data = reserva.data;
     if (!dataDisponivel(data) || !barbeiroSelecionado()) return;
 
-    const horarios = ordenarHorarios(disponibilidadePublica.horarios.filter(item => item.ativo));
+    const consulta = consultaDaSelecao();
+    if (!consulta) return;
+    if (consulta.estado === "carregando") {
+        avisoHorarios.textContent = "Carregando horários…";
+        return;
+    }
+    if (consulta.estado === "erro") {
+        avisoHorarios.textContent = "Não foi possível carregar os horários. Tente novamente.";
+        return;
+    }
+    const agora = new Date();
+    const horarios = consulta.horarios.filter(horario => horarioFuturo(data, horario, agora));
     if (horarios.length === 0) {
-        avisoHorarios.textContent = "Nenhum horário disponível no momento.";
+        avisoHorarios.textContent = "Nenhum horário disponível nessa data. Escolha outra data.";
         return;
     }
 
-    const barbeiroId = reserva.barbeiroId;
-    const ocupados = obterHorariosOcupados(data, barbeiroId);
-    const agora = new Date();
-    let temHorarioDisponivel = false;
     areaHorarios.hidden = false;
 
-    horarios.forEach(({ horario }) => {
-        const ocupado = ocupados.includes(horario);
-        const encerrado = !horarioFuturo(data, horario, agora);
-        const indisponivel = ocupado || encerrado;
-        if (!indisponivel) temHorarioDisponivel = true;
-
+    horarios.forEach(horario => {
         const botao = document.createElement("button");
         botao.type = "button";
         botao.className = "card-horario";
-        botao.textContent = ocupado ? `${horario} ocupado` : encerrado ? `${horario} encerrado` : horario;
-        botao.disabled = indisponivel;
-        botao.classList.toggle("indisponivel", indisponivel);
-        marcarOpcaoSelecionada(botao, !indisponivel && horario === reserva.horario);
+        botao.textContent = horario;
+        marcarOpcaoSelecionada(botao, horario === reserva.horario);
 
         botao.addEventListener("click", () => {
-            if (enviandoReserva || etapaAgendamento !== agendamento || data !== reserva.data ||
-                barbeiroId !== reserva.barbeiroId || !horarioDisponivel(horario)) return;
+            if (enviandoReserva || etapaAgendamento !== agendamento || consultaDaSelecao() !== consulta) return;
+            if (!horarioDisponivel(horario)) {
+                renderizarHorariosCliente();
+                return;
+            }
             reserva.horario = horario;
             mensagemReserva = "";
             mudarEtapaAgendamento(dadosCliente);
         });
         horariosCliente.appendChild(botao);
     });
+}
 
-    if (!temHorarioDisponivel) {
-        avisoHorarios.textContent = "Nenhum horário disponível nessa data. Escolha outra data.";
+function carregarScriptTurnstile() {
+    if (window.turnstile) return Promise.resolve(window.turnstile);
+    if (!scriptTurnstile) {
+        scriptTurnstile = new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            const falhou = () => {
+                clearTimeout(prazo);
+                script.remove();
+                reject(new Error("Verificação indisponível."));
+            };
+            const prazo = setTimeout(falhou, 12000);
+            script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+            script.async = true;
+            script.onload = () => {
+                if (!window.turnstile) return falhou();
+                clearTimeout(prazo);
+                resolve(window.turnstile);
+            };
+            script.onerror = falhou;
+            document.head.append(script);
+        }).catch(erro => {
+            scriptTurnstile = null;
+            throw erro;
+        });
+    }
+    return scriptTurnstile;
+}
+
+function limparDesafioReserva() {
+    const anterior = desafioReserva;
+    desafioReserva = null;
+    if (anterior?.widget != null) {
+        try {
+            anterior.api.remove(anterior.widget);
+        } catch {
+            // O estado local já foi descartado, mesmo se o widget não responder.
+        }
+    }
+    quadroTurnstile.replaceChildren();
+}
+
+function atualizarDesafioReserva() {
+    const estado = desafioReserva?.estado;
+    avisoTurnstile.textContent = {
+        carregando: "Carregando verificação…",
+        pendente: "Conclua a verificação para confirmar.",
+        expirado: "A verificação expirou. Refaça a verificação.",
+        erro: "Verificação indisponível. Tente novamente ou abra a página no navegador.",
+        configuracao: "A verificação da reserva ainda não foi configurada."
+    }[estado] || "";
+    btnRenovarTurnstile.hidden = !["expirado", "erro"].includes(estado);
+    formAgendamento.querySelector('button[type="submit"]').disabled = enviandoReserva || !desafioReserva?.token;
+}
+
+async function prepararDesafioReserva() {
+    if (desafioReserva || enviandoReserva || reservaConfirmada || etapaAgendamento !== dadosCliente) return;
+    const desafio = { estado: "carregando", token: null };
+    desafioReserva = desafio;
+    if (typeof TURNSTILE_SITE_KEY !== "string" || !TURNSTILE_SITE_KEY) {
+        desafio.estado = "configuracao";
+        atualizarDesafioReserva();
+        return;
+    }
+    atualizarDesafioReserva();
+    const atualizar = (estado, token = null) => {
+        if (desafioReserva !== desafio || etapaAgendamento !== dadosCliente) return;
+        desafio.estado = estado;
+        desafio.token = token;
+        atualizarDesafioReserva();
+    };
+    try {
+        const api = await carregarScriptTurnstile();
+        if (desafioReserva !== desafio || etapaAgendamento !== dadosCliente) return;
+        desafio.api = api;
+        atualizar("pendente");
+        desafio.widget = api.render(quadroTurnstile, {
+            sitekey: TURNSTILE_SITE_KEY,
+            action: "criar_reserva",
+            size: "compact",
+            theme: "dark",
+            "response-field": false,
+            "refresh-expired": "manual",
+            callback: token => atualizar("pronto", token),
+            "expired-callback": () => atualizar("expirado"),
+            "timeout-callback": () => atualizar("expirado"),
+            "error-callback": () => atualizar("erro")
+        });
+    } catch {
+        atualizar("erro");
     }
 }
+
+btnRenovarTurnstile.addEventListener("click", () => {
+    if (enviandoReserva || etapaAgendamento !== dadosCliente) return;
+    limparDesafioReserva();
+    prepararDesafioReserva();
+});
 
 function renderizarConfirmacao() {
     const { servico, data, horario, nomeProfissional } = reserva;
@@ -766,8 +930,11 @@ function renderizarConfirmacao() {
     document.getElementById("resumo-data-horario").textContent = `${formatarData(data)} às ${horario}`;
     formAgendamento.hidden = reservaConfirmada;
     formAgendamento.querySelector("fieldset").disabled = enviandoReserva;
+    nomeCliente.readOnly = whatsappCliente.readOnly = Boolean(tentativaReserva?.incerta);
+    btnEncerrarTentativa.hidden = !tentativaReserva?.incerta || enviandoReserva;
     btnNovaReserva.hidden = !reservaConfirmada;
-    avisoConfirmacao.textContent = enviandoReserva ? "Confirmando sua reserva…" : "";
+    avisoConfirmacao.textContent = enviandoReserva ? "Confirmando sua reserva…" : mensagemConfirmacao;
+    if (!reservaConfirmada) prepararDesafioReserva();
 }
 
 btnEtapaAnterior.addEventListener("click", () => {
@@ -777,19 +944,31 @@ btnEtapaAnterior.addEventListener("click", () => {
 
 btnNovaReserva.addEventListener("click", () => {
     if (!reservaConfirmada) return;
+    consultaHorarios = null;
     reserva = {};
     reservaConfirmada = false;
+    mensagemConfirmacao = "";
     mudarEtapaAgendamento(servicos);
+});
+
+btnEncerrarTentativa.addEventListener("click", () => {
+    if (!tentativaReserva?.incerta || enviandoReserva ||
+        !confirm("A reserva pode ter sido registrada. Confirme com a barbearia antes de fazer outra. Encerrar a tentativa?")) return;
+    tentativaReserva = null;
+    mensagemReserva = "Confirme com a barbearia se o pedido anterior foi registrado.";
+    limparDesafioReserva();
+    carregarDisponibilidadePublica();
 });
 
 btnRecarregarDisponibilidade.addEventListener("click", () => {
     if (btnRecarregarDisponibilidade.hidden || enviandoReserva) return;
     etapaAgendamento.querySelector(".titulo-etapa").focus();
-    carregarDisponibilidadePublica();
+    if (estadoDisponibilidade === "erro") carregarDisponibilidadePublica();
+    else carregarHorariosElegiveis();
 });
 
 function atualizarDiaDisponibilidade() {
-    if (!enviandoReserva && disponibilidadePublica && disponibilidadePublica.dia !== dataAtualISO()) {
+    if (!enviandoReserva && !tentativaReserva?.incerta && disponibilidadePublica && disponibilidadePublica.dia !== dataAtualISO()) {
         return carregarDisponibilidadePublica();
     }
 }
@@ -803,6 +982,11 @@ formAgendamento.addEventListener("submit", async e => {
         return;
     }
     if (!formAgendamento.reportValidity()) return;
+    const espera = Math.ceil((aguardarReservaAte - Date.now()) / 1000);
+    if (espera > 0) {
+        avisoConfirmacao.textContent = `Aguarde ${espera} s antes de tentar novamente.`;
+        return;
+    }
 
     const nome = nomeCliente.value.trim();
     const whatsapp = normalizarWhatsapp(whatsappCliente.value);
@@ -813,7 +997,7 @@ formAgendamento.addEventListener("submit", async e => {
     }
 
     const barbeiro = barbeiroSelecionado();
-    if (!reserva.servico || !horarioDisponivel(reserva.horario)) {
+    if (!reserva.servico || (!tentativaReserva?.incerta && !horarioDisponivel(reserva.horario))) {
         reserva.horario = null;
         mensagemReserva = "O horário selecionado está indisponível. Escolha outro horário.";
         mudarEtapaAgendamento(barbeiro ? agendamento : barbeirosSection);
@@ -830,38 +1014,67 @@ formAgendamento.addEventListener("submit", async e => {
         barbeiro_id: barbeiroId
     };
 
-    enviandoReserva = true;
-    renderizarEtapaAgendamento();
-    try {
-        await criarAgendamentoSupabase(agendamentoCliente);
-    } catch (erro) {
-        if (erro?.code === "23505" || (erro?.code === "23514" && erro.message === "Horário indisponível.")) {
-            mensagemReserva = "Não foi possível reservar esse horário. Escolha outro horário.";
-        } else if (erro?.code === "23514" && erro.message === "Serviço indisponível.") {
-            mensagemReserva = "Este serviço está indisponível. Volte para escolher outro serviço.";
-        } else if (!erro?.status || erro.status >= 500) {
-            mensagemReserva = "A conexão falhou e a reserva pode ter sido registrada. Confira a disponibilidade e entre em contato com a barbearia se tiver dúvidas antes de reservar novamente.";
-        } else {
-            mensagemReserva = "Não foi possível confirmar sua reserva. Confira os dados e a disponibilidade.";
+    const token = desafioReserva?.token;
+    if (!token) {
+        avisoConfirmacao.textContent = "Conclua a verificação antes de confirmar.";
+        return;
+    }
+    const conteudo = JSON.stringify(agendamentoCliente);
+    if (tentativaReserva?.incerta && (tentativaReserva.conteudo !== conteudo ||
+        Date.now() - tentativaReserva.iniciadaEm >= 86_400_000)) {
+        avisoConfirmacao.textContent = "Confirme o pedido anterior com a barbearia antes de fazer outro.";
+        return;
+    }
+    if (tentativaReserva?.conteudo !== conteudo) {
+        if (typeof globalThis.crypto?.randomUUID !== "function") {
+            avisoConfirmacao.textContent = "Abra a página em um navegador atualizado para confirmar.";
+            return;
         }
-    } finally {
-        enviandoReserva = false;
+        tentativaReserva = { chave: crypto.randomUUID(), conteudo, iniciadaEm: Date.now(), incerta: false };
     }
 
-    if (mensagemReserva) {
+    enviandoReserva = true;
+    limparDesafioReserva();
+    renderizarEtapaAgendamento();
+    const { resultado, tentar_em } = await enviarPedidoReserva(agendamentoCliente, tentativaReserva.chave, token);
+    enviandoReserva = false;
+    if (resultado === "conflito" || resultado === "revalidar") {
+        tentativaReserva = null;
+        mensagemReserva = resultado === "conflito" ? "Não foi possível reservar esse horário. Escolha outro horário."
+            : "Não foi possível gravar a reserva. Confira o serviço e escolha um horário disponível.";
         await carregarDisponibilidadePublica();
         return;
     }
+    if (resultado !== "confirmada") {
+        if (resultado === "indeterminada") tentativaReserva.incerta = true;
+        if (resultado === "limitada") aguardarReservaAte = Date.now() + tentar_em * 1000;
+        mensagemConfirmacao = tentativaReserva.incerta
+            ? "A reserva pode ter sido registrada. Faça uma nova verificação e confirme o mesmo pedido ou consulte a barbearia."
+            : ({
+                limitada: `Aguarde ${tentar_em} s antes de tentar novamente.`,
+                token_invalido: "A verificação venceu ou foi recusada. Verifique novamente.",
+                indisponivel: "Não foi possível verificar a reserva agora. Tente novamente.",
+                invalida: "Confira os dados e a disponibilidade antes de tentar novamente.",
+                chave_incompativel: "Não foi possível recuperar este pedido."
+            }[resultado] || "Não foi possível confirmar sua reserva.");
+        if (resultado === "limitada" && tentativaReserva.incerta) mensagemConfirmacao += ` Aguarde ${tentar_em} s.`;
+        if (!tentativaReserva.incerta && ["invalida", "chave_incompativel"].includes(resultado)) tentativaReserva = null;
+        renderizarEtapaAgendamento();
+        return;
+    }
 
-    disponibilidadePublica.ocupacoes.push({ data, horario, barbeiro_id: barbeiroId });
-    reserva.nomeProfissional = barbeiro.nome;
+    tentativaReserva = null;
+    mensagemConfirmacao = "";
+    consultaHorarios = null;
+    reserva.nomeProfissional = barbeiro?.nome;
     reservaConfirmada = true;
     formAgendamento.reset();
     renderizarEtapaAgendamento(true);
 });
 
 btnAdmin.addEventListener("click", () => {
-    if (enviandoReserva) return;
+    if (enviandoReserva || tentativaReserva?.incerta) return;
+    limparDesafioReserva();
     areaCliente.style.display = "none";
     areaLogin.style.display = "block";
     areaAdmin.style.display = "none";

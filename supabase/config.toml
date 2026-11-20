@@ -1,0 +1,5 @@
+project_id = "barberbook"
+
+# Visitantes não têm sessão. A função valida o desafio antes da escrita.
+[functions.criar-reserva]
+verify_jwt = false

@@ -16,7 +16,8 @@ const chrome = [
 
 function instalarSupabaseFicticio() {
     const dados = {
-        agendamentos: [], agendamentos_publicos: [], dias_disponiveis: [],
+        agendamentos: [], agendamentos_publicos: [],
+        dias_disponiveis: Array.from({ length: 7 }, (_, dia_semana) => ({ dia_semana, ativo: true })),
         horarios_disponiveis: [], datas_bloqueadas: [], barbeiros: [{ id: 1, nome: "Alex" }]
     };
     let sessao = null;
@@ -24,12 +25,36 @@ function instalarSupabaseFicticio() {
     let confirmarExclusao = false;
     let papel = "admin";
     let afetarLinha = true;
+    let aguardarLeitura;
     const escritas = [];
     const leituras = [];
     window.confirm = () => confirmarExclusao;
     window.fixture = { dados, escritas, leituras, permitirExclusao: () => { confirmarExclusao = true; },
+        pausarLeitura: () => {
+            let liberar;
+            aguardarLeitura = new Promise(resolve => { liberar = resolve; });
+            return () => { aguardarLeitura = null; liberar(); };
+        },
         definirPapel: novo => { papel = novo; }, afetarLinha: sim => { afetarLinha = sim; } };
     window.FUSO_BARBEARIA = "America/Sao_Paulo";
+    window.SUPABASE_URL = "http://127.0.0.1:12345";
+    window.SUPABASE_ANON_KEY = "chave-publica-ficticia";
+    window.TURNSTILE_SITE_KEY = "sitekey-ficticia";
+    window.turnstile = {
+        render(elemento, opcoes) {
+            const acao = document.createElement("button");
+            acao.type = "button";
+            acao.textContent = "Verificar (teste)";
+            acao.addEventListener("click", () => opcoes.callback("token-ficticio"));
+            elemento.append(acao);
+            return "widget-ficticio";
+        },
+        remove() {}
+    };
+    window.fetch = async url => {
+        if (!url.endsWith("/functions/v1/criar-reserva")) throw Error("Escrita fora da Edge Function");
+        return Response.json({ resultado: "confirmada" }, { status: 201 });
+    };
     window.supabaseClient = {
         auth: {
             onAuthStateChange(callback) { notificar = callback; notificar("INITIAL_SESSION", null); },
@@ -42,6 +67,7 @@ function instalarSupabaseFicticio() {
             async signOut() { sessao = null; notificar("SIGNED_OUT", null); return {}; }
         },
         async rpc(nome) {
+            if (nome === "horarios_elegiveis") return { data: { total: 1, horarios: ["10:00"] } };
             return { data: nome === "barbeiro_atual_id" ? 1 : nome === `eh_${papel}` };
         },
         from(tabela) {
@@ -59,6 +85,7 @@ function instalarSupabaseFicticio() {
                 },
                 async range(inicio) {
                     leituras.push({ tabela, inicio, barbeiroId });
+                    if (tabela === "agendamentos" && aguardarLeitura) await aguardarLeitura;
                     const itens = dados[tabela].filter(item => !barbeiroId || item.barbeiro_id === barbeiroId);
                     return { data: itens.slice(inicio, inicio + 1).map(item => ({ ...item })), count: itens.length };
                 },
@@ -224,9 +251,50 @@ async function verificarListagem() {
     await esperar();
     assert(!cartoes.textContent.includes("Cliente próprio") && cartoes.textContent.includes("segunda página"),
         "Barbeiro não conseguiu excluir o próprio agendamento");
+
+    $("btn-voltar").click();
+    await esperar();
+    const liberar = fixture.pausarLeitura();
+    $("btn-admin").click();
+    $("usuario").value = "barbeiro@example.test";
+    $("senha").value = "senha-ficticia";
+    const inicio = fixture.leituras.length;
+    $("form-login").requestSubmit();
+    await esperar();
+    assert(fixture.leituras.slice(inicio).some(item => item.tabela === "agendamentos"),
+        "Leitura pendente não começou");
+    $("btn-voltar").click();
+    liberar();
+    await esperar();
+    assert(!visivel($("area-admin")) && visivel($("area-cliente")), "Resposta antiga reabriu o painel depois do logout");
+
+    for (const largura of [320, 360, 375, 390]) {
+        await redimensionar(largura);
+        document.querySelector(".card-servico").click();
+        document.querySelector(".card-barbeiro").click();
+        document.querySelectorAll(".card-dia:not(:disabled)")[1].click();
+        await esperar();
+        document.querySelector(".card-horario").click();
+        await esperar();
+        assert(document.activeElement.id === "titulo-etapa-confirmacao", "Confirmação perdeu o foco");
+        assert(document.documentElement.scrollWidth <= largura, "Confirmação excedeu a largura");
+        const confirmar = $("form-agendamento").querySelector('[type="submit"]');
+        assert(confirmar.disabled, "Confirmação habilitada sem desafio");
+        const widget = $("turnstile-reserva").querySelector("button");
+        const caixa = widget.getBoundingClientRect();
+        assert(caixa.width >= 44 && caixa.height >= 44, "Controle de teste sem área de toque");
+        widget.click();
+        assert(!confirmar.disabled, "Desafio válido não habilitou a confirmação");
+        $("nome").value = "Cliente fictício";
+        $("whatsapp").value = "21900000000";
+        $("form-agendamento").requestSubmit();
+        await esperar();
+        assert(visivel($("btn-nova-reserva")), "A confirmação pela Edge falhou");
+        $("btn-nova-reserva").click();
+    }
 }
 
-test("painel mantém listas vazias ocultas e recupera ações e foco nos dois layouts", {
+test("painel e reserva com verificação preservam foco, logout e os layouts móveis", {
     skip: !chrome && "Informe o executável do Chrome ou Chromium em CHROME_BIN."
 }, () => {
     const pasta = mkdtempSync(join(tmpdir(), "barberbook-listagem-"));

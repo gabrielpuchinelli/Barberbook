@@ -1,7 +1,21 @@
 -- Dados fictícios para bancos descartáveis. Nunca aplicar junto ao provisionamento de uma loja.
 insert into barberbook_private.instalacao (fuso) values ('America/Sao_Paulo');
+select exists (
+    select from information_schema.columns
+    where table_schema = 'barberbook_private' and table_name = 'servicos' and column_name = 'duracao_minutos'
+) as tem_intervalos \gset
+\if :tem_intervalos
+insert into barberbook_private.servicos (codigo, preco, ativo, duracao_minutos)
+values ('Corte teste', 25, true, 30), ('Barba teste', 17.50, true, 60), ('Serviço inativo', 7, false, 15);
+insert into barberbook_private.janelas_expediente (dia_semana, inicio, fim)
+select dias.dia, janela.inicio, janela.fim
+from generate_series(0, 6) dias(dia)
+cross join (values (time '09:00', time '11:00'), (time '13:00', time '16:00'),
+                   (time '23:30', time '24:00')) janela(inicio, fim);
+\else
 insert into barberbook_private.servicos (codigo, preco, ativo)
 values ('Corte teste', 25, true), ('Barba teste', 17.50, true), ('Serviço inativo', 7, false);
+\endif
 
 insert into public.barbeiros (id, nome, ativo)
 values ('10000000-0000-4000-8000-000000000001', 'Profissional A', true),

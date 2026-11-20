@@ -29,11 +29,11 @@ trap limpar EXIT
 
 dia="(statement_timestamp() at time zone 'America/Sao_Paulo')::date"
 reserva() {
-    local deslocamento=$1 horario=$2 barbeiro=$3
+    local deslocamento=$1 horario=$2 barbeiro=$3 servico=${4:-Corte teste}
     cat <<SQL
 set local role anon;
 insert into public.agendamentos (nome, whatsapp, servico, data, horario, barbeiro_id)
-values ('Reserva fictícia', '21900000000', 'Corte teste', $dia + $deslocamento,
+values ('Reserva fictícia', '21900000000', '$servico', $dia + $deslocamento,
         '$horario', '10000000-0000-4000-8000-00000000000$barbeiro');
 SQL
 }
@@ -97,15 +97,21 @@ SQL
     fi
 }
 
+correr "$(reserva 1 10:00 1)" "update barberbook_private.instalacao set fuso = 'Asia/Tokyo';" 23514
 correr "$(reserva 1 09:00 1)" "$(reserva 1 09:00 1)" 23505
 correr "$(reserva 2 09:30 1)" "$(reserva 2 09:30 2)" ""
 correr "set local role authenticated;
 select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000001', true);
 insert into public.datas_bloqueadas (data) values ($dia + 5);" "$(reserva 5 09:00 1)" 23514
+correr "$(reserva 6 09:00 1 'Barba teste')" "$(reserva 6 09:30 1)" 23P01
+correr "$(reserva 6 09:30 2)" "$(reserva 6 10:00 2)" ""
+correr "update barberbook_private.janelas_expediente set fim = '10:00'
+where dia_semana = extract(dow from $dia + 2) and inicio = '09:00';" \
+    "$(reserva 2 10:00 2)" 23514
 
 total=$(psql -X -Atq -v ON_ERROR_STOP=1 -c 'select count(*) from public.agendamentos')
-if [[ $total != 3 ]]; then
-    echo "Esperadas três reservas após os testes, encontradas $total." >&2
+if [[ $total != 7 ]]; then
+    echo "Esperadas sete reservas após os testes, encontradas $total." >&2
     exit 1
 fi
-echo "Concorrência passou: mesmo profissional, profissionais distintos e bloqueio versus reserva."
+echo "Concorrência passou: início igual, sobreposição, adjacência, profissionais distintos, bloqueio, expediente e fuso."

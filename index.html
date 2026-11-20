@@ -144,10 +144,14 @@
                         inputmode="tel" enterkeyhint="go" maxlength="64" required>
                 </div>
 
+                <div id="turnstile-reserva"></div>
+                <p id="aviso-turnstile" class="aviso-data" role="status"></p>
+                <button id="btn-renovar-turnstile" class="btn-secundario" type="button" hidden>Refazer verificação</button>
                 <button type="submit" class="btn-confirmar">Confirmar agendamento</button>
             </fieldset>
         </form>
         <p id="aviso-confirmacao" class="aviso-data" role="status"></p>
+        <button id="btn-encerrar-tentativa" class="btn-secundario" type="button" hidden>Encerrar tentativa</button>
         <button id="btn-nova-reserva" class="btn-confirmar" type="button" hidden>Fazer novo agendamento</button>
     </section>
 </main>

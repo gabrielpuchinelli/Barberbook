@@ -4,6 +4,9 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Configure o mesmo fuso IANA usado em barberbook_private.instalacao.
 const FUSO_BARBEARIA = "America/Sao_Paulo";
 
+// Chave pública do widget da instalação.
+const TURNSTILE_SITE_KEY = "";
+
 const supabaseClient = window.supabase.createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY
